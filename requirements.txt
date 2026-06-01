@@ -1,0 +1,27 @@
+# Navigator — Python dependencies
+
+# Google Gemini SDK (agent pipeline)
+google-genai>=1.0.0
+
+# Tableau SDK
+tableauserverclient>=0.30.0
+
+# FastAPI + server
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Data validation
+pydantic>=2.7.0
+
+# Database
+sqlalchemy>=2.0.30
+psycopg2-binary>=2.9.9   # PostgreSQL driver
+
+# Cache
+redis>=5.0.4
+
+# Scheduler
+apscheduler>=3.10.4
+
+# Env management
+python-dotenv>=1.0.1

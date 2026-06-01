@@ -1,0 +1,122 @@
+{
+  "cfo": {
+    "version": "1.0.0",
+    "persona": "cfo",
+    "useDynamicCanvas": true,
+    "gridCols": 12,
+    "rowHeight": 300,
+    "gap": 12,
+    "slots": [
+      {
+        "id": "cfo-trajectory",
+        "chartType": "line",
+        "title": "Census Trajectory",
+        "dataKey": "trajectory",
+        "colSpan": 8,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "cfo-system-gauge",
+        "chartType": "gauge",
+        "title": "System Occupancy",
+        "dataKey": "system_stats_occupancy",
+        "colSpan": 4,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "cfo-facility-rank",
+        "chartType": "bar",
+        "title": "Facility Ranking by Occupancy",
+        "dataKey": "facility_rank",
+        "colSpan": 7,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "cfo-revenue-exposure",
+        "chartType": "funnel",
+        "title": "Revenue Exposure",
+        "dataKey": "exposure",
+        "colSpan": 5,
+        "rowSpan": 1,
+        "chartHeight": 260
+      }
+    ]
+  },
+  "care": {
+    "version": "1.0.0",
+    "persona": "care",
+    "useDynamicCanvas": true,
+    "gridCols": 12,
+    "rowHeight": 300,
+    "gap": 12,
+    "slots": [
+      {
+        "id": "care-patient-scatter",
+        "chartType": "scatter",
+        "title": "Patient Risk vs LOS",
+        "dataKey": "patients",
+        "colSpan": 7,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "care-payer-pie",
+        "chartType": "doughnut",
+        "title": "Payer Mix",
+        "dataKey": "payer_mix",
+        "colSpan": 5,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "care-dc-timeline",
+        "chartType": "stacked-bar",
+        "title": "Discharge Timeline",
+        "dataKey": "dc_timeline",
+        "colSpan": 12,
+        "rowSpan": 1,
+        "chartHeight": 260
+      }
+    ]
+  },
+  "dept": {
+    "version": "1.0.0",
+    "persona": "dept",
+    "useDynamicCanvas": true,
+    "gridCols": 12,
+    "rowHeight": 300,
+    "gap": 12,
+    "slots": [
+      {
+        "id": "dept-staffing-heatmap",
+        "chartType": "heatmap",
+        "title": "Staffing Pressure by Shift",
+        "dataKey": "heatmap",
+        "colSpan": 8,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "dept-load-radar",
+        "chartType": "radar",
+        "title": "Department Load",
+        "dataKey": "dept_load",
+        "colSpan": 4,
+        "rowSpan": 1,
+        "chartHeight": 260
+      },
+      {
+        "id": "dept-disruption-bar",
+        "chartType": "bar",
+        "title": "Disruption Indicators",
+        "dataKey": "disruption_sm",
+        "colSpan": 12,
+        "rowSpan": 1,
+        "chartHeight": 240
+      }
+    ]
+  }
+}
