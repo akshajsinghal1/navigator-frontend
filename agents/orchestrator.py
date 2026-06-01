@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -441,15 +442,26 @@ class OrchestratorAgent(BaseAgent):
         result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
 
         self._domain_results[domain_name] = result
-        kpi_count = len(result.get("kpis", []))
+        kpis = result.get("kpis", [])
+        kpi_count = len(kpis)
+
+        # Defensively generate an id from name if the agent omitted it
+        for kpi in kpis:
+            if "id" not in kpi or not kpi["id"]:
+                raw_name = kpi.get("name", f"kpi_{domain_name}")
+                kpi["id"] = re.sub(r"[^a-z0-9]+", "_", raw_name.lower()).strip("_")
+                log.warning(
+                    "Domain '%s' returned KPI without id — generated: %s",
+                    domain_name, kpi["id"],
+                )
 
         log.info("Domain '%s' returned %d KPIs", domain_name, kpi_count)
         return {
             "status":     "ok",
             "domain":     domain_name,
             "kpi_count":  kpi_count,
-            "kpi_ids":    [k["id"] for k in result.get("kpis", [])],
-            "kpi_names":  [k["name"] for k in result.get("kpis", [])],
+            "kpi_ids":    [k["id"] for k in kpis],
+            "kpi_names":  [k.get("name", k["id"]) for k in kpis],
         }
 
     def _tool_generate_chart_spec(self, inp: dict) -> dict:
