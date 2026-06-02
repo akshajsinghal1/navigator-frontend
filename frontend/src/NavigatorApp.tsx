@@ -60,6 +60,22 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
   // Derive loading: true only while neither config nor error is available yet
   const loading = config === null && error === null;
 
+  // ── Theme state ────────────────────────────────────────────────────────────
+  const [isLight, setIsLight] = useState<boolean>(() => {
+    const stored = localStorage.getItem("nav-theme");
+    return stored !== null ? stored === "light" : true;
+  });
+
+  // Apply theme on mount and whenever isLight changes
+  useEffect(() => {
+    if (isLight) {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    localStorage.setItem("nav-theme", isLight ? "light" : "dark");
+  }, [isLight]);
+
   // ── Freshness polling ──────────────────────────────────────────────────────
   const { lastRefreshedAt, status: freshnessStatus, dataUpdated, clearDataUpdated } =
     useDataFreshness(companyId);
@@ -186,6 +202,20 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
     padding: "5px 10px", fontFamily: CHART_FONT, fontSize: 12,
     color: palette.ink3, cursor: "pointer" as const, flexShrink: 0,
   };
+  const themeBtnStyle = {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    height: 28, minWidth: 42,
+    padding: "0 10px",
+    background: palette.bg2,
+    border: `1px solid ${palette.line2}`,
+    borderRadius: 14,
+    color: palette.ink3,
+    fontSize: 14,
+    lineHeight: 1,
+    cursor: "pointer" as const,
+    flexShrink: 0,
+    transition: "background 0.15s, color 0.15s",
+  };
 
   // ── Main UI ────────────────────────────────────────────────────────────────
   return (
@@ -255,6 +285,17 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
             </span>
           </div>
         )}
+
+        {/* Theme toggle */}
+        <button
+          type="button"
+          onClick={() => setIsLight((prev) => !prev)}
+          style={themeBtnStyle}
+          title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+          aria-label={isLight ? "Switch to dark mode" : "Switch to light mode"}
+        >
+          {isLight ? "☀" : "☾"}
+        </button>
 
         {/* Generated-at */}
         <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4, flexShrink: 0 }}>
