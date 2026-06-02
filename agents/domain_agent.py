@@ -110,6 +110,33 @@ Self-check before emitting every KPI:
   - Volume KPI: is it different from the total count? If same, you forgot to filter.
   - Does the value make business sense for this metric name?
 
+Sub-segments and drivers — ALWAYS set these
+────────────────────────────────────────────
+For EVERY KPI, use the categorical_breakdown to identify:
+
+1. critical_segments — which specific sub-segments are worst?
+   Look at the categorical_breakdown for each categorical column.
+   Find the 2-3 values with the worst numeric aggregates.
+   Example: if Profit Ratio by Region shows West=-5%, Central=2%, South=8%:
+     → critical_segments = ["West region (Profit Ratio: -5%)"]
+   Example: if Ship Status shows "Shipped Late" = 26% of orders:
+     → critical_segments = ["26% of orders shipped late"]
+   Set to null only if no categorical breakdown exists.
+
+2. key_drivers — what is causing this KPI to be in warning territory?
+   Only set for KPIs that are declining, negative, or concerning.
+   Look at the data and explain WHY:
+     - What dimension/category is pulling the metric down?
+     - Is there a recent trend change visible in the time series?
+     - Is there a specific sub-segment that stands out?
+   Example: "West region accounts for 45% of total profit shortfall"
+   Example: "Late shipments concentrated in Standard Class (32% vs First Class 8%)"
+   Example: "Q4 revenue down 18% vs Q3, driven by Furniture category decline"
+   Set to null if the KPI is performing well.
+
+These fields let executives know EXACTLY which area needs attention,
+not just that a metric is red — that is the core value of Navigator.
+
 When data is genuinely missing
 ────────────────────────────────
 If the required field or status value is not present in ANY view from relevant_views:

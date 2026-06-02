@@ -259,10 +259,24 @@ QUALITY GATE — before emitting, ask yourself for each KPI:
     of how, the KPI is too thin. Add a slice/ratio/framing.
   - Does the KPI's NAME read like a metric or a question? Prefer questions.
 
-Step 4 — IDENTIFY PERSONAS
+Step 4 — IDENTIFY PERSONAS + CLASSIFY LEVEL
 Real decision-makers (CFO, Ops Manager, Field Rep, etc.) — not generic labels.
 Each persona's dashboard MUST contain a DIFFERENT SET of KPIs — no kpi_id may
 appear in more than one persona. Think of it as assigning ownership:
+
+CRITICAL — set persona_level for every persona:
+  "executive" → C-suite, VP, Director, Chief X Officer, Medical Director
+                They see ONE screen, 4-6 KPIs, big numbers, no jargon.
+                Examples: CEO, CFO, COO, "VP of Sales", "Chief Revenue Officer"
+  "manager"   → Department head, operations lead, team manager
+                They see comprehensive dashboards with all KPIs and breakdowns.
+                Examples: "Sales Operations Manager", "Supply Chain Manager"
+  "analyst"   → BI analyst, data scientist, power user
+                They see everything — all metadata and technical detail.
+                Examples: "BI Analyst", "Data Scientist", "Revenue Operations Analyst"
+
+When in doubt: if the role has "VP", "Chief", "Director", "Head of" → executive.
+If it has "Manager", "Lead", "Coordinator" → manager. If "Analyst", "Scientist" → analyst.
   - CFO owns the financial health KPIs
   - Ops Manager owns throughput + delay KPIs
   - Sales Manager owns quota + pipeline KPIs
@@ -729,13 +743,30 @@ class OrchestratorAgent(BaseAgent):
                     notes        = spec.get("chart_notes"),
                 )
 
-                # Explanation
+                # Explanation — enrich risk + key_insight with sub-segment and driver data
+                # from the domain agent (critical_segments, key_drivers) when available
+                raw_risk    = spec.get("explanation_risk") or kpi_raw.get("anomaly")
+                raw_insight = spec.get("explanation_key_insight")
+
+                critical_segments = kpi_raw.get("critical_segments")
+                key_drivers       = kpi_raw.get("key_drivers")
+
+                # Prepend critical segments to risk flag so it surfaces in the UI
+                if critical_segments and isinstance(critical_segments, list):
+                    seg_text = "Critical sub-segments: " + ", ".join(critical_segments[:3])
+                    raw_risk = f"{seg_text}. {raw_risk}" if raw_risk else seg_text
+
+                # Prepend key drivers to key_insight
+                if key_drivers and isinstance(key_drivers, list):
+                    drivers_text = " · ".join(key_drivers[:3])
+                    raw_insight = f"{drivers_text}. {raw_insight}" if raw_insight else drivers_text
+
                 explanation = Explanation(
                     what          = spec.get("explanation_what", kpi_raw.get("description", "")),
                     why_it_matters= spec.get("explanation_why_matters", ""),
                     trend         = spec.get("explanation_trend") or kpi_raw.get("trend_description"),
-                    risk          = spec.get("explanation_risk") or kpi_raw.get("anomaly"),
-                    key_insight   = spec.get("explanation_key_insight"),
+                    risk          = raw_risk,
+                    key_insight   = raw_insight,
                 )
 
                 kpi_obj = KPI(
@@ -892,9 +923,10 @@ class OrchestratorAgent(BaseAgent):
 
         for p_raw in emit.get("personas", []):
             persona = Persona(
-                role        = p_raw["role"],
-                focus_areas = p_raw.get("focus_areas", []),
-                rationale   = p_raw.get("rationale", ""),
+                role          = p_raw["role"],
+                focus_areas   = p_raw.get("focus_areas", []),
+                rationale     = p_raw.get("rationale", ""),
+                persona_level = p_raw.get("persona_level", "manager"),
             )
 
             # Build this persona's sections independently

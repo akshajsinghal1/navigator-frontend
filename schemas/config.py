@@ -131,6 +131,10 @@ class Persona(BaseModel):
     role: str                          # e.g. "Sales Operations Director"
     focus_areas: List[str]             # e.g. ["revenue", "commission", "forecasting"]
     rationale: str                     # why this persona was derived from the workbook
+    persona_level: Literal["executive", "manager", "analyst"] = "manager"
+    # executive = C-suite / VP / Director  → simplified view, fewer KPIs, big numbers
+    # manager   = dept head / ops lead     → comprehensive, standard detail
+    # analyst   = BI / data scientist      → full detail, all metadata
 
 
 # ── Persona view — a persona + the dashboard sections relevant to it ──────────

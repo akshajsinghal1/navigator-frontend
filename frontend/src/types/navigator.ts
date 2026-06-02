@@ -85,10 +85,13 @@ export interface NavigatorSummaryCard {
   signal: "positive" | "warning" | "neutral";
 }
 
+export type PersonaLevel = "executive" | "manager" | "analyst";
+
 export interface NavigatorPersonaInfo {
   role:             string;
   focus_areas:      string[];
   rationale?:       string;
+  persona_level?:   PersonaLevel;   // executive / manager / analyst
   // legacy fields
   slug?:            string;
   decision_context?: string;

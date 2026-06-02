@@ -165,6 +165,21 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                                     **_STRING,
                                     "description": "Why this persona was derived from the workbook data",
                                 },
+                                "persona_level": {
+                                    "type": "string",
+                                    "enum": ["executive", "manager", "analyst"],
+                                    "description": (
+                                        "Audience complexity level — determines how much detail the dashboard shows:\n"
+                                        "  executive — C-suite, VP, Director. They need: ONE screen, 4-6 KPIs max, "
+                                        "big headline numbers, minimal chart labels, no jargon. Examples: CEO, CFO, COO, "
+                                        "'VP of Sales', 'Chief Revenue Officer', 'Medical Director'.\n"
+                                        "  manager   — Dept head, operations lead, team manager. They need: comprehensive "
+                                        "view, all KPIs, full charts, breakdowns. Examples: 'Sales Operations Manager', "
+                                        "'Supply Chain Manager', 'Admissions Manager'.\n"
+                                        "  analyst   — BI analyst, data scientist, power user. They need: everything — "
+                                        "all metadata, field names, raw values, technical detail."
+                                    ),
+                                },
                                 "summary_cards": {
                                     **_ARRAY(
                                         _OBJECT({
@@ -302,6 +317,26 @@ DOMAIN_TOOLS: list[dict] = [
                                 "raw_data": {
                                     **_ARRAY({"type": "object"}),
                                     "description": "Raw rows from Tableau for this KPI (for chart rendering). LIMIT TO 20 ROWS MAXIMUM — use the most recent/representative rows.",
+                                },
+                                "key_drivers": {
+                                    "description": (
+                                        "For KPIs that are declining, negative, or in warning territory: "
+                                        "list the 2-3 primary factors driving the issue, with specific sub-segments "
+                                        "and numbers. Example: ['Cardiology occupancy at 94% (vs 85% target)', "
+                                        "'ICU staffing gap of -12%', 'Q4 bookings down 23% vs Q3']. "
+                                        "For healthy KPIs: set to null."
+                                    ),
+                                    "oneOf": [_ARRAY(_STRING), {"type": "null"}],
+                                },
+                                "critical_segments": {
+                                    "description": (
+                                        "For KPIs with a breakdown dimension (facility, department, region, category, "
+                                        "sales rep, product): identify which specific sub-segments are performing worst "
+                                        "and need attention. Example: ['Cardiology', 'West region', 'Furniture category']. "
+                                        "Use the actual values from the data — look at the categorical_breakdown in the "
+                                        "fetch_view_data response. Set to null if no breakdown dimension exists."
+                                    ),
+                                    "oneOf": [_ARRAY(_STRING), {"type": "null"}],
                                 },
                                 "l2_projection": {
                                     "description": (
