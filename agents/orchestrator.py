@@ -50,6 +50,40 @@ log = logging.getLogger(__name__)
 _MODEL = "gemini-3.1-pro-preview"
 
 
+# ── Persona level inference ────────────────────────────────────────────────────
+
+def _infer_persona_level(role: str) -> str:
+    """
+    Classify a persona role as executive / manager / analyst.
+
+    Used as fallback when the orchestrator agent omits persona_level.
+    Matches on role title keywords (case-insensitive).
+    """
+    r = role.lower()
+
+    # Executive signals — C-suite, VP, Director, Head of, Chief
+    exec_signals = [
+        "ceo", "cfo", "coo", "cto", "cmo", "cso", "ciso",
+        "chief ", "vp ", "v.p.", "vice president",
+        "director", "head of", "president",
+        "medical director", "clinical director",
+    ]
+    if any(s in r for s in exec_signals):
+        return "executive"
+
+    # Analyst signals
+    analyst_signals = [
+        "analyst", "scientist", "engineer", "developer",
+        "bi ", "data ", "intelligence ", "reporting",
+        "technical", "architect",
+    ]
+    if any(s in r for s in analyst_signals):
+        return "analyst"
+
+    # Default: manager
+    return "manager"
+
+
 # ── unit / format inference helpers ──────────────────────────────────────────
 
 def _infer_unit(kpi_name: str, field_name: str, value) -> str:
@@ -926,7 +960,7 @@ class OrchestratorAgent(BaseAgent):
                 role          = p_raw["role"],
                 focus_areas   = p_raw.get("focus_areas", []),
                 rationale     = p_raw.get("rationale", ""),
-                persona_level = p_raw.get("persona_level", "manager"),
+                persona_level = p_raw.get("persona_level") or _infer_persona_level(p_raw["role"]),
             )
 
             # Build this persona's sections independently
