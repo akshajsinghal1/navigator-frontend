@@ -8,6 +8,30 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// ── Inventory response type ───────────────────────────────────────────────────
+
+export interface InventoryPersona {
+  role:        string;
+  focus_areas: string[];
+  kpi_count:   number;
+  kpi_names:   string[];
+}
+
+export interface InventoryResponse {
+  company_id:    string;
+  workbook_name: string;
+  generated_at:  string;
+  objective:     string;
+  views:         { name: string; updated_at?: string }[];
+  view_count:    number;
+  datasources:   { name: string; field_count: number | null }[];
+  total_fields:  number;
+  parameters:    { name: string; current_value?: string; data_type?: string }[];
+  total_kpis:    number;
+  persona_count: number;
+  personas:      InventoryPersona[];
+}
+
 export const api = {
   // ── Navigator Intelligence Config ────────────────────────────────────────────
   // GET /dashboard/{workbook}  — returns DashboardConfigResponse wrapping the config.
@@ -23,4 +47,9 @@ export const api = {
     get<ViewDataResponse>(
       `/viewdata?workbook=${encodeURIComponent(workbook)}&view=${encodeURIComponent(view)}`
     ),
+
+  // GET /inventory/{company_id} — what Navigator read from Tableau.
+  // Powers the Inventory screen shown after the pipeline completes.
+  inventory: (companyId: string) =>
+    get<InventoryResponse>(`/inventory/${encodeURIComponent(companyId)}`),
 };

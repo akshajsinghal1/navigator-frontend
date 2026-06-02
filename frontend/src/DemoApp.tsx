@@ -1,26 +1,28 @@
 // ─── DemoApp ──────────────────────────────────────────────────────────────────
-// 3-screen internal demo:
+// 4-screen internal demo:
 //
-//   Screen 1 — ConnectScreen  : enter PAT + workbook details
-//   Screen 2 — PipelineScreen : live agent progress log
-//   Screen 3 — NavigatorApp   : fully rendered intelligence dashboard
+//   Screen 1 — ConnectScreen   : enter PAT + workbook details
+//   Screen 2 — PipelineScreen  : live agent progress
+//   Screen 3 — InventoryScreen : what Navigator read from Tableau
+//   Screen 4 — NavigatorApp    : fully rendered intelligence dashboard
 //
-// Navigation is state-based (no router needed for 3 screens).
-// URL deeplink: ?workbook=X&company=Y skips to Screen 3 directly.
+// Navigation is state-based (no router needed).
+// URL deeplink: ?workbook=X&company=Y skips to Screen 4 directly.
 
 import { useRef, useState } from "react";
 import { ChartThemeProvider } from "./context/ChartThemeContext";
-import { ConnectScreen }   from "./screens/ConnectScreen";
-import { PipelineScreen }  from "./screens/PipelineScreen";
-import { NavigatorInner }  from "./NavigatorApp";
+import { ConnectScreen }    from "./screens/ConnectScreen";
+import { PipelineScreen }   from "./screens/PipelineScreen";
+import { InventoryScreen }  from "./screens/InventoryScreen";
+import { NavigatorInner }   from "./NavigatorApp";
 import type { ConnectResult } from "./screens/ConnectScreen";
 
-type Screen = "connect" | "pipeline" | "dashboard";
+type Screen = "connect" | "pipeline" | "inventory" | "dashboard";
 
 function resolveInitialScreen(): { screen: Screen; workbook?: string; companyId?: string } {
-  const params = new URLSearchParams(window.location.search);
-  const workbook   = params.get("workbook") ?? undefined;
-  const companyId  = params.get("company")  ?? undefined;
+  const params    = new URLSearchParams(window.location.search);
+  const workbook  = params.get("workbook") ?? undefined;
+  const companyId = params.get("company")  ?? undefined;
 
   // If both workbook and company are in the URL, go straight to dashboard
   if (workbook && companyId) return { screen: "dashboard", workbook, companyId };
@@ -31,13 +33,12 @@ function resolveInitialScreen(): { screen: Screen; workbook?: string; companyId?
 
 function DemoInner() {
   const init = resolveInitialScreen();
-  const [screen, setScreen] = useState<Screen>(init.screen);
+  const [screen, setScreen]       = useState<Screen>(init.screen);
   const [runInfo, setRunInfo]     = useState<ConnectResult | null>(null);
   const [companyId, setCompanyId] = useState<string>(init.companyId ?? "");
-  // useRef: workbookId drives URL sync only — no render needed on change
-  const workbookIdRef = useRef<string>(init.workbook ?? "");
+  const workbookIdRef             = useRef<string>(init.workbook ?? "");
 
-  // Keep URL in sync — called directly from handlers, not via an effect
+  // Keep URL in sync
   function syncUrl(nextScreen: Screen, nextCompanyId: string) {
     const params = new URLSearchParams(window.location.search);
     if (nextScreen === "dashboard" && nextCompanyId) {
@@ -51,7 +52,7 @@ function DemoInner() {
     window.history.replaceState({}, "", qs ? `?${qs}` : window.location.pathname);
   }
 
-  // ── Screen 1 → Screen 2 ──────────────────────────────────────────────────
+  // ── Screen 1 → Screen 2 ─────────────────────────────────────────────────
   function handleConnect(result: ConnectResult) {
     workbookIdRef.current = result.workbook;
     setRunInfo(result);
@@ -59,14 +60,20 @@ function DemoInner() {
     syncUrl("pipeline", "");
   }
 
-  // ── Screen 2 → Screen 3 ──────────────────────────────────────────────────
-  function handleDone(company: string) {
+  // ── Screen 2 → Screen 3 ─────────────────────────────────────────────────
+  function handlePipelineDone(company: string) {
     setCompanyId(company);
-    setScreen("dashboard");
-    syncUrl("dashboard", company);
+    setScreen("inventory");
+    syncUrl("inventory", "");
   }
 
-  // ── Screen 3 back → Screen 1 ─────────────────────────────────────────────
+  // ── Screen 3 → Screen 4 ─────────────────────────────────────────────────
+  function handleInventoryContinue() {
+    setScreen("dashboard");
+    syncUrl("dashboard", companyId);
+  }
+
+  // ── Screen 4 back → Screen 1 ────────────────────────────────────────────
   function handleReset() {
     workbookIdRef.current = "";
     setScreen("connect");
@@ -85,8 +92,18 @@ function DemoInner() {
       <PipelineScreen
         runId={runInfo.run_id}
         runInfo={runInfo}
-        onDone={handleDone}
+        onDone={handlePipelineDone}
         onRetry={handleReset}
+      />
+    );
+  }
+
+  if (screen === "inventory" && companyId) {
+    return (
+      <InventoryScreen
+        companyId={companyId}
+        workbook={workbookIdRef.current}
+        onContinue={handleInventoryContinue}
       />
     );
   }
@@ -94,7 +111,7 @@ function DemoInner() {
   if (screen === "dashboard") {
     return (
       <NavigatorInner
-        workbookId={companyId}   // dashboard uses company_id to fetch config
+        workbookId={companyId}
         onBack={handleReset}
       />
     );

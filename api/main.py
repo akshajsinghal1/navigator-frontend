@@ -28,6 +28,7 @@ from api.routes.pipeline import router as pipeline_router
 from api.routes.config import router as config_router
 from api.routes.viewdata import router as viewdata_router
 from api.routes.freshness import router as freshness_router
+from api.routes.inventory import router as inventory_router
 
 load_dotenv()
 
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(config_router,    prefix="/config",     tags=["Config"])
     app.include_router(viewdata_router,  prefix="/viewdata",   tags=["ViewData"])
     app.include_router(freshness_router, prefix="/freshness",  tags=["Freshness"])
+    app.include_router(inventory_router, prefix="/inventory",  tags=["Inventory"])
 
     # ── startup ──────────────────────────────────────────────────────────────
     @app.on_event("startup")
