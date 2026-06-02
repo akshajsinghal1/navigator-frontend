@@ -1,35 +1,30 @@
 // ─── DemoApp ──────────────────────────────────────────────────────────────────
-// 4-screen internal demo:
+// 3-screen internal demo:
 //
-//   Screen 1 — ConnectScreen   : enter PAT + workbook details
-//   Screen 2 — PipelineScreen  : live agent progress
-//   Screen 3 — InventoryScreen : what Navigator read from Tableau
-//   Screen 4 — NavigatorApp    : fully rendered intelligence dashboard
+//   Screen 1 — ConnectScreen  : enter PAT + workbook details
+//   Screen 2 — PipelineScreen : live agent progress + inventory preview
+//   Screen 3 — NavigatorApp   : fully rendered intelligence dashboard
 //
-// Navigation is state-based (no router needed).
-// URL deeplink: ?workbook=X&company=Y skips to Screen 4 directly.
+// Navigation is state-based (no router needed for 3 screens).
+// URL deeplink: ?workbook=X&company=Y skips to Screen 3 directly.
 
 import { useRef, useState } from "react";
 import { ChartThemeProvider } from "./context/ChartThemeContext";
-import { ConnectScreen }    from "./screens/ConnectScreen";
-import { PipelineScreen }   from "./screens/PipelineScreen";
-import { InventoryScreen }  from "./screens/InventoryScreen";
-import { NavigatorInner }   from "./NavigatorApp";
+import { ConnectScreen }   from "./screens/ConnectScreen";
+import { PipelineScreen }  from "./screens/PipelineScreen";
+import { NavigatorInner }  from "./NavigatorApp";
 import type { ConnectResult } from "./screens/ConnectScreen";
 
-type Screen = "connect" | "pipeline" | "inventory" | "dashboard";
+type Screen = "connect" | "pipeline" | "dashboard";
 
 function resolveInitialScreen(): { screen: Screen; workbook?: string; companyId?: string } {
-  const params    = new URLSearchParams(window.location.search);
-  const workbook  = params.get("workbook") ?? undefined;
-  const companyId = params.get("company")  ?? undefined;
+  const params = new URLSearchParams(window.location.search);
+  const workbook   = params.get("workbook") ?? undefined;
+  const companyId  = params.get("company")  ?? undefined;
 
-  // If both workbook and company are in the URL, go straight to dashboard
   if (workbook && companyId) return { screen: "dashboard", workbook, companyId };
   return { screen: "connect" };
 }
-
-// ── Inner (inside ChartThemeProvider) ────────────────────────────────────────
 
 function DemoInner() {
   const init = resolveInitialScreen();
@@ -38,7 +33,6 @@ function DemoInner() {
   const [companyId, setCompanyId] = useState<string>(init.companyId ?? "");
   const workbookIdRef             = useRef<string>(init.workbook ?? "");
 
-  // Keep URL in sync
   function syncUrl(nextScreen: Screen, nextCompanyId: string) {
     const params = new URLSearchParams(window.location.search);
     if (nextScreen === "dashboard" && nextCompanyId) {
@@ -52,7 +46,6 @@ function DemoInner() {
     window.history.replaceState({}, "", qs ? `?${qs}` : window.location.pathname);
   }
 
-  // ── Screen 1 → Screen 2 ─────────────────────────────────────────────────
   function handleConnect(result: ConnectResult) {
     workbookIdRef.current = result.workbook;
     setRunInfo(result);
@@ -60,20 +53,12 @@ function DemoInner() {
     syncUrl("pipeline", "");
   }
 
-  // ── Screen 2 → Screen 3 ─────────────────────────────────────────────────
-  function handlePipelineDone(company: string) {
+  function handleDone(company: string) {
     setCompanyId(company);
-    setScreen("inventory");
-    syncUrl("inventory", "");
-  }
-
-  // ── Screen 3 → Screen 4 ─────────────────────────────────────────────────
-  function handleInventoryContinue() {
     setScreen("dashboard");
-    syncUrl("dashboard", companyId);
+    syncUrl("dashboard", company);
   }
 
-  // ── Screen 4 back → Screen 1 ────────────────────────────────────────────
   function handleReset() {
     workbookIdRef.current = "";
     setScreen("connect");
@@ -82,7 +67,6 @@ function DemoInner() {
     syncUrl("connect", "");
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   if (screen === "connect") {
     return <ConnectScreen onConnect={handleConnect} />;
   }
@@ -92,18 +76,8 @@ function DemoInner() {
       <PipelineScreen
         runId={runInfo.run_id}
         runInfo={runInfo}
-        onDone={handlePipelineDone}
+        onDone={handleDone}
         onRetry={handleReset}
-      />
-    );
-  }
-
-  if (screen === "inventory" && companyId) {
-    return (
-      <InventoryScreen
-        companyId={companyId}
-        workbook={workbookIdRef.current}
-        onContinue={handleInventoryContinue}
       />
     );
   }
@@ -119,8 +93,6 @@ function DemoInner() {
 
   return null;
 }
-
-// ── Export ────────────────────────────────────────────────────────────────────
 
 export default function DemoApp() {
   return (
