@@ -48,6 +48,15 @@ When picking x_axis, y_axis, breakdown_by, color_by, sort_by:
   • If the available_dimensions list does not contain a column appropriate for
     your chosen axis, set that axis to null rather than inventing a name.
 
+CRITICAL — read the KPI NAME to pick the right x-axis:
+  If the KPI name says "by X" (e.g. "Referrals by Status", "Revenue by Region",
+  "Orders by Category"), then X is the x-axis dimension, NOT a date/time column.
+  Even if a date column exists in available_dimensions, use the named dimension.
+  Example: "Referrals by Status" → x_axis = "Referral Status" (NOT month/date)
+  Example: "Revenue by Region"   → x_axis = "Region" (NOT month/date)
+  Example: "Sales by Segment"    → x_axis = "Segment" (NOT quarter/year)
+  The "by X" in the KPI name is the user's explicit intent for the grouping dimension.
+
 Example — input given to you:
   field_name           = "Current Staffed Beds"
   available_dimensions = ["Current Staffed Beds"]
