@@ -371,6 +371,14 @@ Rules
 - Forbidden: KPI names that are 1:1 with existing view names (you can SEE which
   view names exist via available_api_views — make your KPI names different).
 - One objective sentence. Design as many personas, domains, and KPIs as the workbook genuinely supports — don't cap artificially. Every KPI must be distinct and data-backed.
+- DEDUPLICATION — before emitting, scan your KPI list for near-duplicate metrics. Two KPIs
+  measuring the same underlying fact are near-duplicates even if named differently:
+  e.g. "Predicted Staffing Shortage" (-0.7) and "Predicted Shortage Absolute" (0.7) are the
+  same metric — one is just abs() of the other. Keep only the richer version (the one with a
+  chart or breakdown). Other near-duplicate patterns to eliminate: "Total Revenue" + "Revenue
+  Sum", "Avg Bed Occupancy" + "Mean Occupancy Rate", "Count of Referrals" + "Referral Volume".
+  If you find a near-duplicate pair, drop the weaker one entirely. Never surface the same
+  business fact twice with slightly different math or naming.
 - Every KPI must appear in EXACTLY ONE persona's dashboard. No kpi_id may be listed
   in multiple personas' dashboard_sections. The assembler enforces this — duplicates
   are silently dropped, so if you repeat a kpi_id across personas one persona will

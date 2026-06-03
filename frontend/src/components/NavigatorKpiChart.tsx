@@ -890,18 +890,26 @@ function buildOption(
         cellMap.get(key)!.push(v);
       }
     }
-    const heatData = [...cellMap.entries()].map(([key, vals]) => {
+    const rawHeatData = [...cellMap.entries()].map(([key, vals]) => {
       const [xi, yi] = key.split(",").map(Number);
       return [xi, yi, vals.reduce((a, b) => a + b, 0) / vals.length];
     });
-    if (!heatData.length) return null;
+    if (!rawHeatData.length) return null;
 
-    // Heatmaps are always full-width tiles so x-axis labels fit in both modes
+    // Smart axis assignment: put the SHORTER dimension on x-axis so cells are wider.
+    // If facilities (xVals) outnumber departments (yVals), swap them.
+    const swapAxes = xVals.length > yVals.length;
+    const hmXVals  = swapAxes ? yVals : xVals;
+    const hmYVals  = swapAxes ? xVals : yVals;
+    const heatData = rawHeatData.map(([xi, yi, v]) =>
+      swapAxes ? [yi, xi, v] : [xi, yi, v]
+    );
+
     const hmXLabel = {
       color:       compact ? palette.ink4 : palette.ink3,
       fontFamily:  CHART_NUM_FONT,
       fontSize:    compact ? 8 : 9,
-      rotate:      xVals.length > 4 ? 35 : 0,
+      rotate:      hmXVals.length > 5 ? 35 : 0,
       hideOverlap: true,
     };
     // containLabel:true handles the space — no fixed width needed, no truncation
@@ -915,17 +923,17 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: compact ? 200 : 600,
       tooltip: compact ? { show: false } : { ...tt, formatter: (p: { value: [number, number, number] }) =>
-        `${xVals[p.value[0]]} / ${yVals[p.value[1]]}: ${p.value[2].toLocaleString()}` },
+        `${hmXVals[p.value[0]]} / ${hmYVals[p.value[1]]}: ${p.value[2].toLocaleString()}` },
       // containLabel ensures y-axis labels never clip; works for both compact and full
       grid: { containLabel: true, left: "2%", right: "2%", top: compact ? 4 : 8, bottom: compact ? 4 : 8 },
       xAxis: {
-        type: "category", data: xVals,
+        type: "category", data: hmXVals,
         axisLabel: hmXLabel,
         axisTick: { show: false },
         axisLine: { lineStyle: { color: palette.line2 } },
       },
       yAxis: {
-        type: "category", data: yVals,
+        type: "category", data: hmYVals,
         axisLabel: hmYLabel,
         axisTick: { show: false },
         axisLine: { lineStyle: { color: palette.line2 } },
