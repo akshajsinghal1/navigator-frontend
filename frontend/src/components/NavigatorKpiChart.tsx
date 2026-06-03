@@ -483,14 +483,14 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: compact ? 200 : 600,
       tooltip: { ...tt, trigger: "axis" },
-      grid: compactGrid ?? { left: 46, right: 16, top: hasCI ? 16 : 12, bottom: 36 },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: hasCI ? 16 : 12, bottom: 8 },
       xAxis: {
         ...AXIS_BASE,
         type: "category",
         data: hasProj ? allX : xData,
         axisLabel: compact
           ? COMPACT_AXIS_X.axisLabel
-          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 },
+          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, hideOverlap: true },
       },
       yAxis: { ...AXIS_BASE, type: "value", scale: compact },
       series: [
@@ -570,14 +570,14 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: compact ? 200 : 600,
       tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: compactGrid ?? { left: 46, right: 16, top: 12, bottom: 36 },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 8 },
       xAxis: {
         ...AXIS_BASE,
         type: "category",
         data: hasProj ? allX : xData,
         axisLabel: compact
           ? COMPACT_AXIS_X.axisLabel
-          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, interval: 0 },
+          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, hideOverlap: true },
       },
       yAxis: { ...AXIS_BASE, type: "value", scale: compact },
       series: [
@@ -633,7 +633,7 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: compact ? 200 : 600,
       tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: compactHBarGrid ?? { left: 110, right: 16, top: 8, bottom: 8 },
+      grid: compactHBarGrid ?? { containLabel: true, left: "2%", right: "4%", top: 8, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value" },
       yAxis: {
         ...AXIS_BASE,
