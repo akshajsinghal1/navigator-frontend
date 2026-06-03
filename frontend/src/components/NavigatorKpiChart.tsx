@@ -408,8 +408,9 @@ function buildOption(
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
   // Compact grids — enough room so labels don't clip
+  // left: 68 fits y-axis numbers up to "1,500,000" (9 chars × ~7px = 63px)
   const compactGrid = compact
-    ? { left: 52, right: 14, top: 8, bottom: 38 }  // bottom=38 for rotated x labels
+    ? { left: 68, right: 14, top: 8, bottom: 38 }
     : null;
   // Horizontal bar: left must fit category name labels (up to ~85px for long names)
   const compactHBarGrid = compact
@@ -463,8 +464,10 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate: allX.length > 8 ? 30 : 0,
-          interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0,
+          rotate:      allX.length > 8 ? 30 : 0,
+          interval:    compact ? "auto" : (allX.length > 16 ? Math.floor(allX.length / 8) : 0),
+          hideOverlap: true,
+          align:       allX.length > 8 ? "right" : "center",
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -552,10 +555,11 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:     allX.length > 8 ? 35 : 0,
-          interval:   0,
-          // align right so rotated labels anchor at tick bottom, not clip on left
-          align:      allX.length > 8 ? "right" : "center",
+          rotate:      allX.length > 8 ? 35 : 0,
+          // compact: auto-skip so labels don't overlap/clip; full: show all
+          interval:    compact ? "auto" : 0,
+          hideOverlap: true,
+          align:       allX.length > 8 ? "right" : "center",
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
