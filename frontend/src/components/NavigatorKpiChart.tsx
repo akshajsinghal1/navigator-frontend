@@ -464,10 +464,12 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:      allX.length > 6 ? 30 : 0,
-          hideOverlap: true,
-          interval:    compact ? undefined : (allX.length > 16 ? Math.floor(allX.length / 8) : 0),
-          align:       allX.length > 6 ? "right" : "center",
+          rotate: allX.length > 6 ? 30 : 0,
+          align:  allX.length > 6 ? "right" : "center",
+          ...(compact ? {} : {
+            interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0,
+            hideOverlap: false,
+          }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -555,12 +557,11 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:      allX.length > 6 ? 35 : 0,
-          // Let ECharts compute interval from chart width — no hardcoding
-          // hideOverlap skips labels that would clip without forcing a fixed count
-          hideOverlap: true,
-          interval:    compact ? undefined : 0,
-          align:       allX.length > 6 ? "right" : "center",
+          rotate: allX.length > 6 ? 35 : 0,
+          align:  allX.length > 6 ? "right" : "center",
+          // compact: keep AXIS_BASE interval:'auto' + hideOverlap:true (no override)
+          // full: force interval:0 (show every label)
+          ...(compact ? {} : { interval: 0, hideOverlap: false }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
