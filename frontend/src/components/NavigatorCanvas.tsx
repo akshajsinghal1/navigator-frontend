@@ -297,12 +297,11 @@ const summaryCardBase = {
   flex: 1,
   minWidth: 0,
   borderRadius: 6,
-  padding: "14px 16px",
+  padding: "10px 14px",
   display: "flex",
   flexDirection: "column" as const,
-  gap: 8,
+  gap: 4,
   animation: "summaryIn 0.32s ease both",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
 } as const;
 
 function SummaryCardItem({ card }: { card: NavigatorSummaryCard }) {
@@ -325,31 +324,31 @@ function SummaryCardItem({ card }: { card: NavigatorSummaryCard }) {
       border: `1px solid ${accentColor}33`,
       borderLeft: `3px solid ${accentColor}`,
     }}>
-      <span style={{
-        fontFamily: CHART_NUM_FONT,
-        fontSize: 12,
-        fontWeight: 700,
-        color: accentColor,
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
-      }}>
-        {signalLabel}
-      </span>
-      <span style={{
-        fontFamily: CHART_FONT,
-        fontSize: 13,
-        fontWeight: 700,
-        color: palette.ink,
-        lineHeight: 1.3,
-      }}>
-        {card.title}
-      </span>
+      {/* Signal + title on one row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 10, fontWeight: 700,
+          color: accentColor, letterSpacing: "0.04em", textTransform: "uppercase",
+          flexShrink: 0,
+        }}>
+          {signalLabel}
+        </span>
+        <span style={{
+          fontFamily: CHART_FONT, fontSize: 12, fontWeight: 700,
+          color: palette.ink, lineHeight: 1.2,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {card.title}
+        </span>
+      </div>
+      {/* Body — 2 lines max */}
       <p style={{
-        fontFamily: CHART_FONT,
-        fontSize: 12,
-        color: palette.ink2,
-        lineHeight: 1.6,
-        margin: 0,
+        fontFamily: CHART_FONT, fontSize: 11,
+        color: palette.ink3, lineHeight: 1.4, margin: 0,
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
       }}>
         {card.body}
       </p>
@@ -593,15 +592,7 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
         {loading ? "…" : formatL1(displayValue, unit)}
       </span>
 
-      {/* Row 3: mini sparkline — clean trend indicator, full chart opens on click */}
-      {(kpi.chart?.type ?? "kpi_card") !== "kpi_card" && (kpi.chart?.type ?? "") !== "scorecard" && (
-        <div style={{ marginTop: 2 }}>
-          <MiniSparkline
-            rawData={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
-            color={palette.accent}
-          />
-        </div>
-      )}
+      {/* No sparkline — tile is name + value only; full chart opens on click */}
     </button>
   );
 }
@@ -989,22 +980,10 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
 
       {/* ── AI Summary strip ── */}
       {hasSummary && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{
-            fontFamily: CHART_NUM_FONT,
-            fontSize: 12,
-            fontWeight: 700,
-            color: palette.ink4,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}>
-            AI Summary
-          </span>
-          <div style={{ display: "flex", gap: 12 }}>
-            {persona.summary_cards!.map((card, i) => (
-              <SummaryCardItem key={i + card.title} card={card} />
-            ))}
-          </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {persona.summary_cards!.map((card, i) => (
+            <SummaryCardItem key={i + card.title} card={card} />
+          ))}
         </div>
       )}
 

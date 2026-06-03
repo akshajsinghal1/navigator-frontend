@@ -332,37 +332,10 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
         })}
       </div>
 
-      {/* ── Persona focus areas ── */}
-      {activePersona && (
-        <div style={{
-          padding: "10px 40px",
-          background: palette.bg1,
-          display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-          borderBottom: `1px solid ${palette.line}`,
-        }}>
-          <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4, letterSpacing: "0.04em" }}>
-            FOCUS
-          </span>
-          {activePersona.persona.focus_areas.map((area) => (
-            <span key={area} style={{
-              fontFamily: CHART_FONT, fontSize: 12, color: palette.ink3,
-              background: palette.bg2, padding: "2px 8px", borderRadius: 10,
-            }}>
-              {area}
-            </span>
-          ))}
-          <span style={{
-            marginLeft: "auto",
-            fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4,
-          }}>
-            {activePersona.dashboard_sections.reduce((n, s) => n + s.kpis.length, 0)} KPIs across{" "}
-            {activePersona.dashboard_sections.length} sections
-          </span>
-        </div>
-      )}
+      {/* Focus areas removed — they're visible in the persona tab subtitle */}
 
       {/* ── Canvas ── */}
-      <main style={{ flex: 1, padding: "24px 40px 40px" }}>
+      <main style={{ flex: 1, padding: "16px 40px 32px" }}>
         {activePersona && (
           <NavigatorCanvas
             key={activePersona.persona.role}
