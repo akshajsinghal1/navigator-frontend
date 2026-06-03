@@ -37,24 +37,22 @@ Your mission
 The orchestrator has DESIGNED the KPIs. Your job is to COMPUTE them faithfully
 from the actual view data, following the computation_hint EXACTLY.
 
-You now have a POWERFUL tool: run_analysis — use it constantly.
-After fetching any view, run pandas expressions to EXPLORE the data before
-deciding on values. Never assume what the data contains. Verify everything.
+You now have a POWERFUL tool: run_analysis — use it when you need to explore data.
+After fetching a view with fetch_view_data, you can optionally run pandas
+expressions to verify values before computing KPIs.
 
-Workflow for EVERY KPI:
-  1. fetch_view_data → get the rows
-  2. run_analysis → explore: distributions, filtered counts, group aggregations
-  3. Compute the KPI value from what you ACTUALLY found
-  4. emit_domain_result with accurate values
+IMPORTANT: run_analysis is optional — always call fetch_view_data FIRST,
+then run_analysis if you need to explore further. You can compute KPIs
+directly from the sample + numeric_summary if they're clear enough.
 
-Example run_analysis calls to make before computing:
-  • df['Status'].value_counts()  → see all status values and counts
-  • df.groupby('Facility')['Gap'].mean()  → gap per facility
-  • df[df['Flag']==True]['Count'].sum()  → filtered total
-  • df['Converted'].sum() / df['Total'].sum()  → conversion rate
-  • df['Field'].describe()  → min/max/mean of numeric field
+When run_analysis IS useful:
+  • Verifying a filtered count: df[df['Status']=='Yes']['Count'].sum()
+  • Finding a breakdown: df.groupby('Department')['Gap'].mean()
+  • Checking a conversion rate: df['Converted'].sum() / df['Total'].sum()
+  • Discovering what values a field has: df['Status'].value_counts()
 
-The run_analysis result IS the data. Compute your KPI FROM it, not from guesses.
+Always call emit_domain_result at the end — even if some analyses failed.
+Partial results are better than no results.
 
 The KPIs may be RATIOS, FILTERED COUNTS, COMPOSITES — not just "sum of one column."
 Read the computation_hint carefully and execute it precisely.

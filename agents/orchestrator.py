@@ -377,11 +377,15 @@ Rules
   have an empty section. Assign each KPI to the persona that most needs it.
 - Complete all analysis before emitting. Quality over speed.
 
-Tool call strategy
-──────────────────
-Turn 1: Understand → design domains + KPIs + personas → call analyze_domain for ALL domains in parallel
-Turn 2: Domain results in → call generate_chart_spec for ALL KPIs in parallel
-Turn 3: Chart specs in → call emit_intelligence_config once
+Tool call strategy — follow this EXACTLY (3 turns maximum)
+────────────────────────────────────────────────────────────
+Turn 1: Understand workbook → design domains + KPIs + personas
+        → call analyze_domain for ALL domains simultaneously (one turn)
+Turn 2: Domain results in → call generate_chart_spec for ALL KPIs simultaneously (one turn)
+Turn 3: Chart specs in → call emit_intelligence_config ONCE
+
+Do NOT split these across extra turns. All analyze_domain calls go in turn 1.
+All generate_chart_spec calls go in turn 2. Emit in turn 3. Done.
 """
 
 
@@ -407,7 +411,7 @@ class OrchestratorAgent(BaseAgent):
             model          = _MODEL,
             tools          = ORCHESTRATOR_TOOLS,
             system_prompt  = _SYSTEM_PROMPT,
-            max_iterations = 10,
+            max_iterations = 12,  # 3 content turns + summary agents + buffer
             max_tokens     = 8192,
         )
         self._connector       = connector
