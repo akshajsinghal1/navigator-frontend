@@ -311,7 +311,9 @@ class BaseAgent(ABC):
     # ── private helpers ──────────────────────────────────────────────────────
 
     # Seconds to wait for a single Gemini API call before treating it as hung.
-    _CALL_TIMEOUT = 120
+    # Domain agents send large payloads (200 rows × multiple views) so they
+    # need more time. 200s gives headroom without hanging if Gemini drops the connection.
+    _CALL_TIMEOUT = 200
 
     def _gemini_call(self, contents: list[types.Content]) -> Any:
         """Call the Gemini API with retry on rate-limit / overload / timeout."""

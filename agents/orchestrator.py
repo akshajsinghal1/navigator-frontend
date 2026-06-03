@@ -506,6 +506,22 @@ class OrchestratorAgent(BaseAgent):
         agent  = DomainAgent(self._connector, self._workbook_luid)
         result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
 
+        # Retry once if the agent finished without emitting (Gemini returned text
+        # instead of calling the tool — happens when API is slow / overloaded)
+        kpis = result.get("kpis", [])
+        if not kpis:
+            log.warning(
+                "Domain '%s' returned 0 KPIs on first attempt — retrying once",
+                domain_name,
+            )
+            agent2  = DomainAgent(self._connector, self._workbook_luid)
+            result2 = agent2.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
+            if result2.get("kpis"):
+                result = result2
+                log.info("Domain '%s' retry succeeded — got %d KPIs", domain_name, len(result2["kpis"]))
+            else:
+                log.warning("Domain '%s' retry also returned 0 KPIs — skipping domain", domain_name)
+
         self._domain_results[domain_name] = result
         kpis = result.get("kpis", [])
         kpi_count = len(kpis)
