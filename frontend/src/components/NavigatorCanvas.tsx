@@ -959,12 +959,24 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
   );
 }
 
-// ── KPI grid template from count ──────────────────────────────────────────────
+// ── Smart column span per KPI type ────────────────────────────────────────────
+// 6-column grid — tiles get spans based on chart complexity:
+//   kpi_card / scorecard       → span 2 (3 per row — compact, no chart)
+//   complex charts (heatmap,   → span 6 (full width — need horizontal space)
+//     radar, treemap, funnel)
+//   all other chart types      → span 3 (2 per row — standard charts)
+//
+// grid-auto-flow: dense fills any remaining gaps automatically.
 
-function gridTemplateForCount(count: number): string {
-  if (count === 1) return "1fr";
-  // Max 2 columns — ensures 4 KPIs (2×2) always fit on screen without scrolling
-  return "1fr 1fr";
+const FULL_WIDTH_TYPES = new Set([
+  "heatmap_chart", "radar_chart", "treemap_chart", "funnel_chart",
+]);
+
+function kpiColSpan(kpi: NavigatorKPI): number {
+  const ctype = kpi.chart?.type ?? "kpi_card";
+  if (ctype === "kpi_card" || ctype === "scorecard") return 2;   // 1/3 row
+  if (FULL_WIDTH_TYPES.has(ctype))                  return 6;   // full row
+  return 3;                                                      // 1/2 row
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -1044,18 +1056,21 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
             </span>
           </div>
 
-          {/* Compact KPI tile grid */}
+          {/* Compact KPI tile grid — 6 columns, smart spans, dense auto-flow */}
           <div style={{
             display:             "grid",
-            gridTemplateColumns: gridTemplateForCount(section.kpis.length),
+            gridTemplateColumns: "repeat(6, 1fr)",
+            gridAutoFlow:        "dense",
             gap:                 10,
           }}>
             {section.kpis.map((kpi, index) => (
               <div
                 key={kpi.id ?? `${section.id}-${index}`}
                 style={{
+                  gridColumn:     `span ${kpiColSpan(kpi)}`,
                   animation:      "kpiEnter 0.28s ease both",
                   animationDelay: `${index * 0.04}s`,
+                  minWidth:       0,
                 }}
               >
                 <KpiTile
