@@ -896,14 +896,14 @@ function buildOption(
     });
     if (!heatData.length) return null;
 
-    const hmXLabel = compact
-      ? { show: false }  // hide in tile — too crowded
-      : {
-          color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 9,
-          rotate: xVals.length > 4 ? 35 : 0,
-          hideOverlap: true,
-          // compact mode is handled above; full mode: let containLabel handle margins
-        };
+    // Heatmaps are always full-width tiles so x-axis labels fit in both modes
+    const hmXLabel = {
+      color:       compact ? palette.ink4 : palette.ink3,
+      fontFamily:  CHART_NUM_FONT,
+      fontSize:    compact ? 8 : 9,
+      rotate:      xVals.length > 4 ? 35 : 0,
+      hideOverlap: true,
+    };
     const hmYLabel = {
       color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 9,
       overflow: "truncate" as const,
