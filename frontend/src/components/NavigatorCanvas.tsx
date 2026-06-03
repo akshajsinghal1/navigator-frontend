@@ -278,7 +278,8 @@ function PeriodBar({
               background:  active ? palette.bg1 : "transparent",
               color:       active ? palette.ink  : palette.ink4,
               boxShadow:   active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-              transition:  "all 0.15s",
+              transitionProperty: "background-color, color, box-shadow",
+          transitionDuration: "0.15s",
               letterSpacing: "0.02em",
             }}
           >
@@ -449,7 +450,6 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
   const [liveL1, setLiveL1] = useState<number | null>(
     typeof kpi.l1?.value === "number" ? kpi.l1.value : null
   );
-  const [liveL2, setLiveL2] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [allRows, setAllRows] = useState<Record<string, unknown>[]>([]);
 
@@ -494,13 +494,10 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
 
   useEffect(() => { fetchAndCompute(); }, [fetchAndCompute]);
 
-  // Compute L2 whenever period or allRows change
-  useEffect(() => {
-    if (period === "now" || !allRows.length || !kpi.l2_projection) {
-      setLiveL2(null);
-      return;
-    }
-    setLiveL2(evaluateL2Projection(allRows, kpi.l2_projection, period === "7d" ? 7 : 30));
+  // L2 is derived directly — no extra state or effect needed
+  const liveL2 = useMemo(() => {
+    if (period === "now" || !allRows.length || !kpi.l2_projection) return null;
+    return evaluateL2Projection(allRows, kpi.l2_projection, period === "7d" ? 7 : 30);
   }, [allRows, period, kpi.l2_projection]);
 
   const displayLayer: "L1" | "L2" = period === "now" ? "L1" : "L2";
@@ -519,28 +516,28 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
     palette.ink3;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={() => onExpand(kpi)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onExpand(kpi); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background:   palette.bg1,
-        border:       `1px solid ${hovered ? palette.line2 : palette.line}`,
-        borderRadius: 6,
-        padding:      "12px 14px",
-        cursor:       "pointer",
-        display:      "flex",
+        background:    palette.bg1,
+        border:        `1px solid ${hovered ? palette.line2 : palette.line}`,
+        borderRadius:  6,
+        padding:       "12px 14px",
+        cursor:        "pointer",
+        display:       "flex",
         flexDirection: "column",
-        gap:          6,
-        minWidth:     0,
-        transition:   "border-color 0.15s, box-shadow 0.15s",
-        boxShadow:    hovered
+        gap:           6,
+        minWidth:      0,
+        width:         "100%",
+        textAlign:     "left",
+        transitionProperty: "border-color, box-shadow",
+        transitionDuration: "0.15s",
+        boxShadow:     hovered
           ? "0 4px 16px rgba(0,0,0,0.16)"
           : "0 1px 3px rgba(0,0,0,0.06)",
-        outline: "none",
       }}
     >
       {/* Row 1: name + badge + trend arrow */}
@@ -603,11 +600,11 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
             kpi={kpi}
             rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
             loading={loading}
-            height={80}
+            height={70}
           />
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -969,9 +966,8 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
 
 function gridTemplateForCount(count: number): string {
   if (count === 1) return "1fr";
-  if (count === 2) return "1fr 1fr";
-  if (count === 3) return "1fr 1fr 1fr";
-  return "repeat(auto-fill, minmax(240px, 1fr))";
+  // Max 2 columns — ensures 4 KPIs (2×2) always fit on screen without scrolling
+  return "1fr 1fr";
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

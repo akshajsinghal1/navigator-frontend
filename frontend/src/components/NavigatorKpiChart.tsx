@@ -682,11 +682,11 @@ function buildOption(
   // ── Scatter chart ────────────────────────────────────────────────────────
   if (ctype === "scatter_chart") {
     // Use x and y columns as the two axes for correlation
-    const scatterData = rows.map((row) => {
+    const scatterData = rows.flatMap((row) => {
       const xv = parseNum(row[xCol!]);
       const yv = parseNum(row[yCol!]);
-      return xv !== null && yv !== null ? [xv, yv] : null;
-    }).filter(Boolean);
+      return xv !== null && yv !== null ? [[xv, yv]] : [];
+    });
 
     if (!scatterData.length) return null;
 

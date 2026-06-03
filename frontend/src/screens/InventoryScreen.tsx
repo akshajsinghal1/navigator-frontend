@@ -107,8 +107,14 @@ export function InventoryScreen({ companyId, workbook, onContinue }: Props) {
 
   useEffect(() => {
     api.inventory(companyId)
-      .then((data) => { setInv(data); setLoading(false); })
-      .catch((err) => { setError(String(err)); setLoading(false); });
+      .then((data) => {
+        setInv(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(String(err));
+        setLoading(false);
+      });
   }, [companyId]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
@@ -146,7 +152,7 @@ export function InventoryScreen({ companyId, workbook, onContinue }: Props) {
           Pipeline completed for <strong>{workbook}</strong>
         </span>
         <span style={{ fontFamily: CHART_FONT, fontSize: 13, color: palette.ink3 }}>
-          Inventory details unavailable — you can still continue to the dashboard.
+          Inventory details unavailable. You can still continue to the dashboard.
         </span>
         <button
           type="button"
