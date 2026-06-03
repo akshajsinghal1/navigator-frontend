@@ -389,6 +389,7 @@ function buildOption(
   const tt    = chartTooltip(palette);
 
   // Compact mode: mini axes with fewer labels — resembles original but scaled down
+  // No width/overflow here — applied per-axis where needed to avoid x-axis truncation
   const AXIS_BASE = compact ? {
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
@@ -398,8 +399,6 @@ function buildOption(
       fontSize:    9,
       interval:    "auto" as const,
       hideOverlap: true,
-      overflow:    "truncate" as const,
-      width:       52,
     },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const, opacity: 0.5 } },
   } : {
@@ -408,16 +407,13 @@ function buildOption(
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact: grid with enough room so labels don't get clipped
-  // left: 55 fits y-axis numbers like "10,000" and short names
-  // right: 14 prevents right-edge clipping for values like "0.15"
-  // bottom: 30 fits x-axis date/category labels at 9px
+  // Compact grids — enough room so labels don't clip
   const compactGrid = compact
-    ? { left: 55, right: 14, top: 8, bottom: 30 }
+    ? { left: 52, right: 14, top: 8, bottom: 38 }  // bottom=38 for rotated x labels
     : null;
-  // Horizontal bar compact needs wider left for category names
+  // Horizontal bar: left must fit category name labels (up to ~85px for long names)
   const compactHBarGrid = compact
-    ? { left: 65, right: 16, top: 6, bottom: 6 }
+    ? { left: 90, right: 16, top: 6, bottom: 6 }
     : null;
 
   // ── Detect confidence interval columns ──────────────────────────────────
@@ -554,7 +550,13 @@ function buildOption(
         ...AXIS_BASE,
         type: "category",
         data: hasProj ? allX : xData,
-        axisLabel: { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, interval: 0 },
+        axisLabel: {
+          ...AXIS_BASE.axisLabel,
+          rotate:     allX.length > 8 ? 35 : 0,
+          interval:   0,
+          // align right so rotated labels anchor at tick bottom, not clip on left
+          align:      allX.length > 8 ? "right" : "center",
+        },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
       series: [
@@ -616,7 +618,13 @@ function buildOption(
         ...AXIS_BASE,
         type: "category",
         data: hPairs.map((p) => p.x),
-        axisLabel: { ...AXIS_BASE.axisLabel, width: 100, overflow: "truncate" },
+        // compact: width=82 fits ~10-12 char names within the 90px left grid
+        // full: width=100 as before
+        axisLabel: {
+          ...AXIS_BASE.axisLabel,
+          width:    compact ? 82 : 100,
+          overflow: "truncate",
+        },
       },
       series: [{
         name: kpi.name,
