@@ -407,16 +407,15 @@ function buildOption(
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact grids — enough room so labels don't clip
-  // left: 68 fits y-axis numbers up to "1,500,000"
-  // right: 70 gives rotated last label room to extend without hitting canvas edge
-  //   "December 2027" at 35° extends ~60px right from its tick — right:70 keeps it in bounds
+  // Compact grids
+  // containLabel:true — ECharts auto-adjusts margins so labels are never clipped
+  // No more guessing pixel values for rotated label overflow
   const compactGrid = compact
-    ? { left: 68, right: 70, top: 8, bottom: 38 }
+    ? { containLabel: true, top: 8, bottom: 8 }
     : null;
-  // Horizontal bar: left must fit category name labels (up to ~85px for long names)
+  // Horizontal bar: containLabel handles name label widths automatically
   const compactHBarGrid = compact
-    ? { left: 90, right: 16, top: 6, bottom: 6 }
+    ? { containLabel: true, top: 6, bottom: 6 }
     : null;
 
   // ── Detect confidence interval columns ──────────────────────────────────
@@ -466,10 +465,8 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate: allX.length > 6 ? 30 : 0,
-          ...(compact
-            ? { interval: allX.length, showMinLabel: true, showMaxLabel: true }
-            : { interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 }),
+          rotate:   allX.length > 6 ? 30 : 0,
+          ...(compact ? {} : { interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -557,14 +554,8 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate: allX.length > 6 ? 35 : 0,
-          // compact: show only first + last label (derived from data, never hardcoded)
-          //   interval = data.length skips all middle labels
-          //   showMinLabel + showMaxLabel force first/last to always render
-          // full: show every label (interval:0)
-          ...(compact
-            ? { interval: allX.length, showMinLabel: true, showMaxLabel: true }
-            : { interval: 0 }),
+          rotate:   allX.length > 6 ? 35 : 0,
+          ...(compact ? {} : { interval: 0 }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
