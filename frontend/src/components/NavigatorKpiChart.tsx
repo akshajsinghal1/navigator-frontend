@@ -839,17 +839,37 @@ function buildOption(
 
   // ── Heatmap chart ────────────────────────────────────────────────────────
   if (ctype === "heatmap_chart") {
-    // Group by x and breakdown_by as y, value as intensity
-    const byCol  = kpi.chart?.breakdown_by ? findColumn(rows, kpi.chart.breakdown_by) : null;
-    if (!byCol || !xCol || !yCol) return null;
+    // x-axis: first categorical dimension, y-axis: second categorical dimension
+    // breakdown_by sets the y-axis; fall back to yCol when breakdown_by not set
+    const byCol  = kpi.chart?.breakdown_by
+      ? findColumn(rows, kpi.chart.breakdown_by)
+      : (yCol !== xCol ? yCol : null);
+    if (!byCol || !xCol) return null;
     const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
     const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
-    const heatData = rows.flatMap(row => {
+    // Find intensity column: first numeric column that isn't xCol or byCol
+    // Falls back to count-per-cell (1) if no numeric column exists
+    const cols = rows.length ? Object.keys(rows[0]) : [];
+    const intensityCol = cols.find(c => c !== xCol && c !== byCol && rows.slice(0,5).some(r => parseNum(r[c]) !== null));
+
+    // Build intensity map: for count-based (no numeric col), count occurrences per cell
+    const cellMap = new Map<string, number[]>();
+    for (const row of rows) {
       const xi = xVals.indexOf(String(row[xCol!] ?? ""));
       const yi = yVals.indexOf(String(row[byCol!] ?? ""));
-      const v  = parseNum(row[yCol!]);
-      return xi >= 0 && yi >= 0 && v !== null ? [[xi, yi, v]] : [];
+      if (xi < 0 || yi < 0) continue;
+      const key = `${xi},${yi}`;
+      const v = intensityCol ? parseNum(row[intensityCol]) : 1;
+      if (v !== null) {
+        if (!cellMap.has(key)) cellMap.set(key, []);
+        cellMap.get(key)!.push(v);
+      }
+    }
+    const heatData = [...cellMap.entries()].map(([key, vals]) => {
+      const [xi, yi] = key.split(",").map(Number);
+      return [xi, yi, vals.reduce((a, b) => a + b, 0) / vals.length];
     });
+    if (!heatData.length) return null;
     return {
       backgroundColor: "transparent",
       tooltip: { ...tt, formatter: (p: { value: [number, number, number] }) =>
