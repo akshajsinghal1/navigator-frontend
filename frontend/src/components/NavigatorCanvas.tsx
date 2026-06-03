@@ -966,7 +966,7 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
 //   everything else → span 1 (half width, 2 per row)
 
 const FULL_WIDTH_TYPES = new Set([
-  "heatmap_chart", "radar_chart", "treemap_chart", "funnel_chart",
+  "radar_chart", "treemap_chart", "funnel_chart",
 ]);
 
 function kpiColSpan(kpi: NavigatorKPI, index: number, total: number): number {
