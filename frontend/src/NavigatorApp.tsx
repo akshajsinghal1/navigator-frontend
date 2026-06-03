@@ -61,19 +61,24 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
   const loading = config === null && error === null;
 
   // ── Theme state ────────────────────────────────────────────────────────────
+  // Initial value matches the inline script in index.html (runs before React mounts)
+  // so there's no flash or double-click needed on first load.
   const [isLight, setIsLight] = useState<boolean>(() => {
-    const stored = localStorage.getItem("nav-theme");
-    return stored !== null ? stored === "light" : true;
+    try {
+      return localStorage.getItem("nav-theme") !== "dark";
+    } catch {
+      return true;
+    }
   });
 
-  // Apply theme on mount and whenever isLight changes
+  // Sync DOM + localStorage whenever user toggles
   useEffect(() => {
     if (isLight) {
       document.documentElement.setAttribute("data-theme", "light");
     } else {
       document.documentElement.removeAttribute("data-theme");
     }
-    localStorage.setItem("nav-theme", isLight ? "light" : "dark");
+    try { localStorage.setItem("nav-theme", isLight ? "light" : "dark"); } catch { /* noop */ }
   }, [isLight]);
 
   // ── Freshness polling ──────────────────────────────────────────────────────

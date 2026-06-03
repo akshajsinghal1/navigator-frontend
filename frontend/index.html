@@ -10,6 +10,16 @@
       href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap"
       rel="stylesheet"
     />
+    <!-- Apply saved theme before React mounts to prevent flash + fix double-click -->
+    <script>
+      try {
+        var t = localStorage.getItem('nav-theme');
+        // Default to light; only go dark if explicitly saved as 'dark'
+        if (t !== 'dark') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
