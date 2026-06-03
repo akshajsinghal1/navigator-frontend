@@ -959,24 +959,26 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
   );
 }
 
-// ── Smart column span per KPI type ────────────────────────────────────────────
-// 6-column grid — tiles get spans based on chart complexity:
-//   kpi_card / scorecard       → span 2 (3 per row — compact, no chart)
-//   complex charts (heatmap,   → span 6 (full width — need horizontal space)
-//     radar, treemap, funnel)
-//   all other chart types      → span 3 (2 per row — standard charts)
-//
-// grid-auto-flow: dense fills any remaining gaps automatically.
+// ── KPI tile column span ──────────────────────────────────────────────────────
+// 2-column grid. Span rules:
+//   heatmap / radar / treemap / funnel → always span 2 (full width — need space)
+//   last tile in a section that would be alone → span 2 (fills gap cleanly)
+//   everything else → span 1 (half width, 2 per row)
 
 const FULL_WIDTH_TYPES = new Set([
   "heatmap_chart", "radar_chart", "treemap_chart", "funnel_chart",
 ]);
 
-function kpiColSpan(kpi: NavigatorKPI): number {
+function kpiColSpan(kpi: NavigatorKPI, index: number, total: number): number {
   const ctype = kpi.chart?.type ?? "kpi_card";
-  if (ctype === "kpi_card" || ctype === "scorecard") return 2;   // 1/3 row
-  if (FULL_WIDTH_TYPES.has(ctype))                  return 6;   // full row
-  return 3;                                                      // 1/2 row
+  // Complex chart types always get full width
+  if (FULL_WIDTH_TYPES.has(ctype)) return 2;
+  // Last tile alone on a row + has a chart → expand to fill gap
+  const isLast       = index === total - 1;
+  const wouldBeLone  = total % 2 !== 0 && isLast;
+  const hasChart     = ctype !== "kpi_card" && ctype !== "scorecard";
+  if (wouldBeLone && hasChart) return 2;
+  return 1;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -1056,18 +1058,17 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
             </span>
           </div>
 
-          {/* Compact KPI tile grid — 6 columns, smart spans, dense auto-flow */}
+          {/* Compact KPI tile grid — 2 columns, smart spans */}
           <div style={{
             display:             "grid",
-            gridTemplateColumns: "repeat(6, 1fr)",
-            gridAutoFlow:        "dense",
+            gridTemplateColumns: "repeat(2, 1fr)",
             gap:                 10,
           }}>
             {section.kpis.map((kpi, index) => (
               <div
                 key={kpi.id ?? `${section.id}-${index}`}
                 style={{
-                  gridColumn:     `span ${kpiColSpan(kpi)}`,
+                  gridColumn:     `span ${kpiColSpan(kpi, index, section.kpis.length)}`,
                   animation:      "kpiEnter 0.28s ease both",
                   animationDelay: `${index * 0.04}s`,
                   minWidth:       0,
