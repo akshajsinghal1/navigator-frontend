@@ -140,14 +140,21 @@ function monthYearToNum(s: string): number {
     jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
     jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
   };
-  const m = s.match(/(\d{4})[/-](\d{1,2})/);
-  if (m) return parseInt(m[1]) * 100 + parseInt(m[2]);
-  const m2 = s.match(/([A-Za-z]{3})[a-z]*\s*(\d{4})/);
-  if (m2) return parseInt(m2[2]) * 100 + (months[m2[1].toLowerCase()] ?? 0);
-  const m3 = s.match(/Q(\d)\s*(\d{4})/i);
-  if (m3) return parseInt(m3[2]) * 100 + parseInt(m3[1]) * 3;
-  const m4 = s.match(/^(\d{4})$/);
-  if (m4) return parseInt(m4[1]) * 100;
+  // MM/DD/YYYY or M/D/YYYY — e.g. "11/3/2026", "10/27/2026"
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return parseInt(mdy[3]) * 10000 + parseInt(mdy[1]) * 100 + parseInt(mdy[2]);
+  // YYYY-MM or YYYY/MM — e.g. "2026-11"
+  const ym = s.match(/(\d{4})[/-](\d{1,2})/);
+  if (ym) return parseInt(ym[1]) * 100 + parseInt(ym[2]);
+  // "Month YYYY" — e.g. "November 2026"
+  const my = s.match(/([A-Za-z]{3})[a-z]*\s*(\d{4})/);
+  if (my) return parseInt(my[2]) * 100 + (months[my[1].toLowerCase()] ?? 0);
+  // "Q1 2026"
+  const q = s.match(/Q(\d)\s*(\d{4})/i);
+  if (q) return parseInt(q[2]) * 100 + parseInt(q[1]) * 3;
+  // "2026"
+  const yr = s.match(/^(\d{4})$/);
+  if (yr) return parseInt(yr[1]) * 100;
   return 0;
 }
 
@@ -400,10 +407,25 @@ function buildOption(
     },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const, opacity: 0.5 } },
   };
-  const COMPACT_AXIS_X = {  // for x-axis (categories/dates — hide labels, keep line)
+  const COMPACT_AXIS_X = {  // for x-axis — short labels, auto-skip, no rotation
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
-    axisLabel: { show: false },
+    axisLabel: {
+      show:        true,
+      color:       palette.ink4,
+      fontFamily:  CHART_NUM_FONT,
+      fontSize:    8,
+      hideOverlap: true,
+      // Short formatter: "11/3/2026" → "11/3", "November 2026" → "Nov", "Q1 2026" → "Q1"
+      formatter:   (val: string) => {
+        const mdy = val.match(/^(\d{1,2})\/(\d{1,2})\/\d{4}$/);
+        if (mdy) return `${mdy[1]}/${mdy[2]}`;
+        const my = val.match(/^([A-Za-z]{3})[a-z]*/);
+        if (my) return my[1];
+        if (/^Q\d/i.test(val)) return val.slice(0, 2);
+        return val.length > 6 ? val.slice(0, 6) : val;
+      },
+    },
     splitLine: { show: false },
   };
   const AXIS_BASE = compact ? COMPACT_AXIS_Y : {
@@ -412,9 +434,9 @@ function buildOption(
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact grids — tight margins since x-axis labels are hidden
+  // Compact grids — containLabel ensures short x labels never clip
   const compactGrid = compact
-    ? { left: 55, right: 8, top: 6, bottom: 6 }
+    ? { containLabel: true, top: 6 }
     : null;
   // Horizontal bar compact: containLabel for y-axis (category names still shown)
   const compactHBarGrid = compact
@@ -467,7 +489,7 @@ function buildOption(
         type: "category",
         data: hasProj ? allX : xData,
         axisLabel: compact
-          ? { show: false }
+          ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -554,7 +576,7 @@ function buildOption(
         type: "category",
         data: hasProj ? allX : xData,
         axisLabel: compact
-          ? { show: false }
+          ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, interval: 0 },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
