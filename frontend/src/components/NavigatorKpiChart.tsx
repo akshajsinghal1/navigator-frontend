@@ -408,9 +408,11 @@ function buildOption(
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
   // Compact grids — enough room so labels don't clip
-  // left: 68 fits y-axis numbers up to "1,500,000" (9 chars × ~7px = 63px)
+  // left: 68 fits y-axis numbers up to "1,500,000"
+  // right: 70 gives rotated last label room to extend without hitting canvas edge
+  //   "December 2027" at 35° extends ~60px right from its tick — right:70 keeps it in bounds
   const compactGrid = compact
-    ? { left: 68, right: 14, top: 8, bottom: 38 }
+    ? { left: 68, right: 70, top: 8, bottom: 38 }
     : null;
   // Horizontal bar: left must fit category name labels (up to ~85px for long names)
   const compactHBarGrid = compact
