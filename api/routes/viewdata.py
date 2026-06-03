@@ -38,22 +38,36 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-# ── Shared VDS session ────────────────────────────────────────────────────────
+# ── Multi-workbook VDS session pool ──────────────────────────────────────────
+# Sessions are keyed by (server_url, site_name, pat_name) so different Tableau
+# instances / tenants get separate sessions without interfering with each other.
+# Single-tenant deployments (one PAT in env) effectively use one shared session.
 
 _session_lock = threading.Lock()
-_session: dict[str, Any] = {"client": None}   # shared signed-in VdsClient
+_session_pool: dict[str, Any] = {}   # instance_key → VdsClient
+
+
+def _instance_key() -> str:
+    """Derive a session pool key from the current Tableau environment credentials."""
+    import os
+    return ":".join([
+        os.environ.get("TABLEAU_SERVER_URL", ""),
+        os.environ.get("TABLEAU_SITE_NAME", ""),
+        os.environ.get("TABLEAU_PAT_NAME", ""),
+    ])
+
 
 def _get_conn() -> "VdsClient":
     """
-    Return the shared signed-in VDS client, signing in once if needed.
-
-    The lock ensures parallel requests don't each trigger their own sign-in
-    (which would cause Tableau to 401 the older tokens immediately).
+    Return a signed-in VDS client for the current Tableau instance.
+    One session per (server_url, site_name, pat_name) combination.
+    Lock prevents concurrent sign-ins which would invalidate each other's tokens.
     """
     from tableau.vds import VdsClient
 
+    key = _instance_key()
     with _session_lock:
-        client = _session["client"]
+        client = _session_pool.get(key)
         if client is None or client._token is None:
             try:
                 client = VdsClient.from_env()
@@ -63,16 +77,17 @@ def _get_conn() -> "VdsClient":
                     detail=f"Tableau credentials not configured: {exc}",
                 )
             client.sign_in()
-            _session["client"] = client
-            log.info("VDS: signed in (shared session)")
-    return _session["client"]
+            _session_pool[key] = client
+            log.info("VDS: signed in (session key=%s…)", key[:30])
+    return _session_pool[key]
 
 
 def _invalidate_conn() -> None:
-    """Clear the shared session so the next request triggers a fresh sign-in."""
+    """Clear the session for the current Tableau instance."""
+    key = _instance_key()
     with _session_lock:
-        _session["client"] = None
-    log.info("VDS: shared session invalidated")
+        _session_pool.pop(key, None)
+    log.info("VDS: session invalidated for key=%s…", key[:30])
 
 
 # ── Row / LUID caches ─────────────────────────────────────────────────────────

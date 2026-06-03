@@ -177,13 +177,21 @@ def _run_pipeline_thread(
         set_status(run_id, "completed", progress=100)
         log.info("[%s] Pipeline completed successfully", run_id)
 
-        # Register with freshness monitor for automatic data refresh
+        # Warm Redis cache immediately so first dashboard load is instant
+        try:
+            from storage.cache import ConfigCache
+            ConfigCache().warm(company_id, config.model_dump(mode="json"))
+        except Exception as exc:
+            log.debug("Cache warming failed (non-fatal): %s", exc)
+
+        # Register with freshness monitor — pass view count for schema change detection
         try:
             from pipeline.freshness_monitor import register as fm_register
+            wb_updated_at = wb_meta.get("updated_at") if wb_meta else None
             fm_register(
                 company_id=company_id,
                 workbook_content_url=workbook_content_url,
-                creds=creds,
+                initial_updated_at=wb_updated_at,
             )
         except Exception as exc:
             log.debug("Freshness monitor registration failed (non-fatal): %s", exc)
