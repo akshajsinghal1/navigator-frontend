@@ -82,6 +82,44 @@ _DOMAIN_VOCAB: list[tuple[str, list[str]]] = [
 _GEO_KEYWORDS  = {"state", "country", "city", "territory", "region", "lat", "lon", "zip", "postal"}
 _TIME_KEYWORDS = {"date", "time", "year", "month", "quarter", "week", "day", "period"}
 
+# ── Operational dimension keywords ────────────────────────────────────────────
+# These fields should ALWAYS be considered as breakdown dimensions.
+# If they exist in a workbook, at least one KPI per persona should use them.
+_OPERATIONAL_DIM_GROUPS: dict[str, list[str]] = {
+    "facility":    ["facility", "site", "location", "building", "campus", "branch"],
+    "department":  ["department", "dept", "unit", "ward", "floor", "division",
+                    "team", "cost center", "service line"],
+    "shift":       ["shift", "shift_name", "schedule", "slot"],
+    "region":      ["region", "zone", "territory", "district", "area", "geography",
+                    "market", "sector"],
+    "role":        ["role", "position", "job_title", "staff_type", "employee_type",
+                    "classification", "rn", "cna", "therapist"],
+    "status":      ["status", "state", "stage", "flag", "category", "type",
+                    "priority", "risk"],
+}
+
+# ── Financial field keywords ──────────────────────────────────────────────────
+# Fields containing these words are FINANCIALLY MATERIAL —
+# must surface in at least one KPI, especially for CFO/executive personas.
+_FINANCIAL_KEYWORDS = [
+    "cost", "labor_cost", "labour", "revenue", "income", "budget",
+    "spend", "expense", "wage", "salary", "pay", "compensation",
+    "agency", "contract", "overtime", "premium", "billing", "charge",
+    "reimbursement", "copay", "premium", "profit", "loss", "margin",
+]
+
+# ── View classification keywords ─────────────────────────────────────────────
+_VIEW_TYPE_HINTS: dict[str, list[str]] = {
+    "kpi_tile":      ["kpi", "tile", "card", "snapshot", "current", "today",
+                      "now", "summary", "overview"],
+    "trend_chart":   ["trend", "over time", "history", "timeline", "monthly",
+                      "weekly", "daily", "forecast", "projection"],
+    "breakdown":     ["by ", "breakdown", "distribution", "comparison",
+                      "department", "facility", "region", "status", "category"],
+    "heatmap":       ["heatmap", "heat map", "matrix", "grid", "calendar"],
+    "risk_matrix":   ["risk", "matrix", "scatter", "bubble", "quadrant"],
+}
+
 
 def _lower(s: str) -> str:
     return s.lower()
@@ -101,6 +139,58 @@ def _is_time_field(name: str, data_type: str | None) -> bool:
     fl = _lower(name)
     dt = _lower(data_type or "")
     return "date" in dt or "datetime" in dt or any(kw in fl for kw in _TIME_KEYWORDS)
+
+
+def _detect_operational_dimensions(all_fields: list[dict]) -> dict[str, list[str]]:
+    """
+    Find fields that should be used as breakdown dimensions.
+    Groups them by type: facility, department, shift, region, role, status.
+    These should ALWAYS appear in at least one KPI per persona.
+    """
+    result: dict[str, list[str]] = {}
+    for group, keywords in _OPERATIONAL_DIM_GROUPS.items():
+        found = [
+            f["name"] for f in all_fields
+            if f.get("role") == "DIMENSION" and
+               any(kw in _lower(f["name"]) for kw in keywords)
+        ]
+        if found:
+            result[group] = found
+    return result
+
+
+def _detect_financial_fields(all_fields: list[dict]) -> list[str]:
+    """
+    Find fields that represent money/cost/revenue — must surface in at least
+    one KPI, especially for finance/executive personas.
+    """
+    return [
+        f["name"] for f in all_fields
+        if any(kw in _lower(f["name"]) for kw in _FINANCIAL_KEYWORDS)
+        and f.get("role") in ("MEASURE", "DIMENSION") or f.get("type") == "CalculatedField"
+    ]
+
+
+def _classify_views(sheets: list[str]) -> dict[str, list[str]]:
+    """
+    Classify Tableau views by purpose from their names.
+    Helps orchestrator pick the right view for each KPI type.
+    """
+    classified: dict[str, list[str]] = {k: [] for k in _VIEW_TYPE_HINTS}
+    classified["other"] = []
+
+    for sheet in sheets:
+        sl = _lower(sheet)
+        assigned = False
+        for view_type, hints in _VIEW_TYPE_HINTS.items():
+            if any(h in sl for h in hints):
+                classified[view_type].append(sheet)
+                assigned = True
+                break
+        if not assigned:
+            classified["other"].append(sheet)
+
+    return {k: v for k, v in classified.items() if v}  # drop empty
 
 
 def _score_kpi_likelihood(field: dict) -> int:
@@ -260,6 +350,12 @@ def run_eda(filtered_inventory: dict[str, Any]) -> dict[str, Any]:
     # ── L2 summary ───────────────────────────────────────────────────────────
     l2_eligible = [p for p in parameters if p["l2_eligible"]]
 
+    # ── Enhanced structural discovery ────────────────────────────────────────
+    # These are passed to orchestrator so agents know WHAT exists before designing KPIs
+    operational_dimensions = _detect_operational_dimensions(all_fields)
+    financial_fields        = _detect_financial_fields(all_fields)
+    view_classification     = _classify_views(sheets)
+
     return {
         "summary": {
             "total_fields":       len(all_fields),
@@ -288,6 +384,10 @@ def run_eda(filtered_inventory: dict[str, Any]) -> dict[str, Any]:
         "time_fields": time_fields,
         "geographic_fields": geo_fields,
         "sheets": sheets,
+        # ── Enhanced structural maps ─────────────────────────────────────────
+        "operational_dimensions": operational_dimensions,
+        "financial_fields":       financial_fields,
+        "view_classification":    view_classification,
     }
 
 
@@ -341,6 +441,34 @@ def format_eda_for_agent(eda: dict[str, Any]) -> str:
     # Dimensions for breakdowns
     if eda["dimensions"]:
         lines.append(f"\nDIMENSIONS (available for chart breakdowns): {', '.join(eda['dimensions'][:15])}")
+
+    # ── Enhanced structural maps ──────────────────────────────────────────────
+
+    op_dims = eda.get("operational_dimensions", {})
+    if op_dims:
+        lines.append("\nOPERATIONAL DIMENSIONS — always use as breakdown candidates:")
+        lines.append("  At least ONE KPI per persona MUST use these as x-axis or breakdown_by.")
+        for dim_type, fields in op_dims.items():
+            lines.append(f"  {dim_type.upper()}: {', '.join(fields[:5])}")
+
+    fin_fields = eda.get("financial_fields", [])
+    if fin_fields:
+        lines.append("\nFINANCIAL FIELDS — must surface in at least one persona (especially CFO/executive):")
+        lines.append(f"  {', '.join(fin_fields[:10])}")
+
+    view_class = eda.get("view_classification", {})
+    if view_class:
+        lines.append("\nVIEW CLASSIFICATION — use the right view type for each KPI design:")
+        if view_class.get("kpi_tile"):
+            lines.append(f"  KPI tiles (single values):  {', '.join(view_class['kpi_tile'][:5])}")
+        if view_class.get("trend_chart"):
+            lines.append(f"  Trend charts (time-series): {', '.join(view_class['trend_chart'][:5])}")
+        if view_class.get("breakdown"):
+            lines.append(f"  Breakdown views (use for 'by X' KPIs): {', '.join(view_class['breakdown'][:5])}")
+        if view_class.get("heatmap"):
+            lines.append(f"  Heatmaps (dept × time grids): {', '.join(view_class['heatmap'][:5])}")
+        if view_class.get("risk_matrix"):
+            lines.append(f"  Risk matrices (scatter/rank): {', '.join(view_class['risk_matrix'][:5])}")
 
     lines.append("\n=== END PRE-ANALYSIS ===")
     return "\n".join(lines)
