@@ -388,32 +388,35 @@ function buildOption(
   const yData = pairs.map((p) => p.y);
   const tt    = chartTooltip(palette);
 
-  // Compact mode: mini axes with fewer labels — resembles original but scaled down
-  // No width/overflow here — applied per-axis where needed to avoid x-axis truncation
-  const AXIS_BASE = compact ? {
+  // Compact mode: y-axis labels for scale, NO x-axis labels (see modal for dates)
+  // This keeps the tile clean — shape + scale is what matters in compact view
+  const COMPACT_AXIS_Y = {  // for y-axis (numeric scale — keep visible)
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
     axisLabel: {
-      color:       palette.ink4,
-      fontFamily:  CHART_NUM_FONT,
-      fontSize:    9,
-      interval:    "auto" as const,
-      hideOverlap: true,
+      color:      palette.ink4,
+      fontFamily: CHART_NUM_FONT,
+      fontSize:   9,
     },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const, opacity: 0.5 } },
-  } : {
+  };
+  const COMPACT_AXIS_X = {  // for x-axis (categories/dates — hide labels, keep line)
+    axisLine:  { lineStyle: { color: palette.line2 } },
+    axisTick:  { show: false },
+    axisLabel: { show: false },
+    splitLine: { show: false },
+  };
+  const AXIS_BASE = compact ? COMPACT_AXIS_Y : {
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact grids
-  // containLabel:true — ECharts auto-adjusts margins so labels are never clipped
-  // No more guessing pixel values for rotated label overflow
+  // Compact grids — tight margins since x-axis labels are hidden
   const compactGrid = compact
-    ? { containLabel: true, top: 8, bottom: 8 }
+    ? { left: 55, right: 8, top: 6, bottom: 6 }
     : null;
-  // Horizontal bar: containLabel handles name label widths automatically
+  // Horizontal bar compact: containLabel for y-axis (category names still shown)
   const compactHBarGrid = compact
     ? { containLabel: true, top: 6, bottom: 6 }
     : null;
@@ -463,11 +466,9 @@ function buildOption(
         ...AXIS_BASE,
         type: "category",
         data: hasProj ? allX : xData,
-        axisLabel: {
-          ...AXIS_BASE.axisLabel,
-          rotate:   allX.length > 6 ? 30 : 0,
-          ...(compact ? {} : { interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 }),
-        },
+        axisLabel: compact
+          ? { show: false }
+          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
       series: [
@@ -552,11 +553,9 @@ function buildOption(
         ...AXIS_BASE,
         type: "category",
         data: hasProj ? allX : xData,
-        axisLabel: {
-          ...AXIS_BASE.axisLabel,
-          rotate:   allX.length > 6 ? 35 : 0,
-          ...(compact ? {} : { interval: 0 }),
-        },
+        axisLabel: compact
+          ? { show: false }
+          : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, interval: 0 },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
       series: [
