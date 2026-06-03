@@ -464,10 +464,11 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:      allX.length > 8 ? 30 : 0,
-          interval:    compact ? "auto" : (allX.length > 16 ? Math.floor(allX.length / 8) : 0),
-          hideOverlap: true,
-          align:       allX.length > 8 ? "right" : "center",
+          rotate:   allX.length > 6 ? 30 : 0,
+          interval: compact
+            ? Math.max(0, Math.floor(allX.length / 5) - 1)
+            : (allX.length > 16 ? Math.floor(allX.length / 8) : 0),
+          align: allX.length > 6 ? "right" : "center",
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -555,11 +556,12 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:      allX.length > 8 ? 35 : 0,
-          // compact: auto-skip so labels don't overlap/clip; full: show all
-          interval:    compact ? "auto" : 0,
-          hideOverlap: true,
-          align:       allX.length > 8 ? "right" : "center",
+          rotate:   allX.length > 6 ? 35 : 0,
+          // compact: show ~5 evenly spaced labels; full: show all
+          interval: compact
+            ? Math.max(0, Math.floor(allX.length / 5) - 1)
+            : 0,
+          align: allX.length > 6 ? "right" : "center",
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
