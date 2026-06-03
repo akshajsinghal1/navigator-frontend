@@ -384,11 +384,13 @@ function buildOption(
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
     axisLabel: {
-      color: palette.ink4,
-      fontFamily: CHART_NUM_FONT,
-      fontSize: 9,
-      interval: "auto" as const,   // ECharts will auto-skip overlapping labels
+      color:       palette.ink4,
+      fontFamily:  CHART_NUM_FONT,
+      fontSize:    9,
+      interval:    "auto" as const,
       hideOverlap: true,
+      overflow:    "truncate" as const,
+      width:       52,
     },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const, opacity: 0.5 } },
   } : {
@@ -397,9 +399,16 @@ function buildOption(
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact: tighter grid with room for small labels
+  // Compact: grid with enough room so labels don't get clipped
+  // left: 55 fits y-axis numbers like "10,000" and short names
+  // right: 14 prevents right-edge clipping for values like "0.15"
+  // bottom: 30 fits x-axis date/category labels at 9px
   const compactGrid = compact
-    ? { left: 36, right: 8, top: 6, bottom: 24 }
+    ? { left: 55, right: 14, top: 8, bottom: 30 }
+    : null;
+  // Horizontal bar compact needs wider left for category names
+  const compactHBarGrid = compact
+    ? { left: 65, right: 16, top: 6, bottom: 6 }
     : null;
 
   // ── Detect confidence interval columns ──────────────────────────────────
@@ -592,7 +601,7 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: compact ? 200 : 600,
       tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: compactGrid ?? { left: 110, right: 16, top: 8, bottom: 8 },
+      grid: compactHBarGrid ?? { left: 110, right: 16, top: 8, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value" },
       yAxis: {
         ...AXIS_BASE,
