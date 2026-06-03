@@ -783,6 +783,143 @@ function buildOption(
     };
   }
 
+  // ── Donut chart ──────────────────────────────────────────────────────────
+  if (ctype === "donut_chart") {
+    const COLORS = [palette.accent, palette.green, palette.amber, palette.red, palette.ink2];
+    const pieData = pairs.map((p, i) => ({
+      name: p.x, value: p.y,
+      itemStyle: { color: COLORS[i % COLORS.length] },
+    }));
+    return {
+      backgroundColor: "transparent",
+      tooltip: { ...tt, trigger: "item",
+        formatter: (p: { name: string; value: number; percent: number }) =>
+          `${p.name}: ${p.value.toLocaleString()} (${p.percent}%)` },
+      legend: { bottom: 0, type: "scroll", textStyle: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 }, icon: "circle", itemWidth: 8 },
+      series: [{ name: kpi.name, type: "pie", radius: ["40%", "65%"], center: ["50%", "42%"],
+        data: pieData, label: { show: false },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.3)" } } }],
+    };
+  }
+
+  // ── Stacked area chart ───────────────────────────────────────────────────
+  if (ctype === "stacked_area_chart") {
+    return {
+      backgroundColor: "transparent", animationDuration: compact ? 200 : 600,
+      tooltip: { ...tt, trigger: "axis" },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: hasCI ? 16 : 12, bottom: 8 },
+      xAxis: { ...AXIS_BASE, type: "category", data: xData,
+        axisLabel: compact ? COMPACT_AXIS_X.axisLabel : { ...AXIS_BASE.axisLabel, rotate: xData.length > 8 ? 30 : 0, hideOverlap: true } },
+      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
+      series: [{ name: kpi.name, type: "line", data: yData, smooth: true, symbol: "none",
+        lineStyle: { color: palette.accent, width: 2 },
+        areaStyle: { color: translucent(palette.accent, 0.25) } }],
+    };
+  }
+
+  // ── Funnel chart ─────────────────────────────────────────────────────────
+  if (ctype === "funnel_chart") {
+    const funnelData = pairs.map((p, i) => ({
+      name: p.x, value: p.y,
+      itemStyle: { color: `rgba(232,163,58,${1 - i * 0.15})` },
+    }));
+    return {
+      backgroundColor: "transparent",
+      tooltip: { ...tt, trigger: "item",
+        formatter: (p: { name: string; value: number; percent: number }) =>
+          `${p.name}: ${p.value.toLocaleString()} (${p.percent}%)` },
+      series: [{ name: kpi.name, type: "funnel",
+        left: "10%", width: "80%", top: 8, bottom: 32,
+        sort: "descending", gap: 2,
+        data: funnelData,
+        label: { show: !compact, position: "inside", fontSize: 10, color: palette.bg },
+        emphasis: { label: { fontSize: 12 } } }],
+    };
+  }
+
+  // ── Heatmap chart ────────────────────────────────────────────────────────
+  if (ctype === "heatmap_chart") {
+    // Group by x and breakdown_by as y, value as intensity
+    const byCol  = kpi.chart?.breakdown_by ? findColumn(rows, kpi.chart.breakdown_by) : null;
+    if (!byCol || !xCol || !yCol) return null;
+    const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
+    const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
+    const heatData = rows.flatMap(row => {
+      const xi = xVals.indexOf(String(row[xCol!] ?? ""));
+      const yi = yVals.indexOf(String(row[byCol!] ?? ""));
+      const v  = parseNum(row[yCol!]);
+      return xi >= 0 && yi >= 0 && v !== null ? [[xi, yi, v]] : [];
+    });
+    return {
+      backgroundColor: "transparent",
+      tooltip: { ...tt, formatter: (p: { value: [number, number, number] }) =>
+        `${xVals[p.value[0]]} / ${yVals[p.value[1]]}: ${p.value[2].toLocaleString()}` },
+      grid: { left: 60, right: 8, top: 8, bottom: 36 },
+      xAxis: { type: "category", data: xVals, axisLabel: { color: palette.ink3, fontSize: 9, rotate: 35 }, axisTick: { show: false }, axisLine: { lineStyle: { color: palette.line2 } } },
+      yAxis: { type: "category", data: yVals, axisLabel: { color: palette.ink3, fontSize: 9 }, axisTick: { show: false }, axisLine: { lineStyle: { color: palette.line2 } } },
+      visualMap: { show: false, min: Math.min(...heatData.map(d => d[2])), max: Math.max(...heatData.map(d => d[2])), inRange: { color: [translucent(palette.accent, 0.1), palette.accent] } },
+      series: [{ type: "heatmap", data: heatData, emphasis: { itemStyle: { shadowBlur: 10 } } }],
+    };
+  }
+
+  // ── Treemap chart ────────────────────────────────────────────────────────
+  if (ctype === "treemap_chart") {
+    const COLORS = [palette.accent, palette.green, palette.amber, palette.red, palette.ink2];
+    return {
+      backgroundColor: "transparent",
+      tooltip: { ...tt, formatter: (p: { name: string; value: number }) =>
+        `${p.name}: ${p.value.toLocaleString()}` },
+      series: [{ type: "treemap", width: "100%", height: "100%",
+        roam: false, nodeClick: false,
+        data: pairs.map((p, i) => ({ name: p.x, value: p.y, itemStyle: { color: COLORS[i % COLORS.length], gapWidth: 2 } })),
+        label: { show: true, fontSize: 10, color: "#fff", formatter: "{b}" },
+        breadcrumb: { show: false } }],
+    };
+  }
+
+  // ── Radar chart ──────────────────────────────────────────────────────────
+  if (ctype === "radar_chart") {
+    const maxVal = Math.max(...pairs.map(p => p.y)) * 1.2;
+    return {
+      backgroundColor: "transparent",
+      tooltip: tt,
+      radar: {
+        indicator: pairs.map(p => ({ name: p.x, max: maxVal })),
+        axisName: { color: palette.ink3, fontSize: 9 },
+        axisLine: { lineStyle: { color: palette.line } },
+        splitLine: { lineStyle: { color: palette.line } },
+        splitArea: { areaStyle: { color: ["transparent"] } },
+      },
+      series: [{ type: "radar",
+        data: [{ name: kpi.name, value: pairs.map(p => p.y),
+          areaStyle: { color: translucent(palette.accent, 0.2) },
+          lineStyle: { color: palette.accent, width: 2 },
+          itemStyle: { color: palette.accent } }] }],
+    };
+  }
+
+  // ── Bubble chart ─────────────────────────────────────────────────────────
+  if (ctype === "bubble_chart") {
+    // Uses x_axis, y_axis, and a third dimension for bubble size
+    const scatterData = rows.flatMap((row) => {
+      const xv = parseNum(row[xCol!]);
+      const yv = parseNum(row[yCol!]);
+      return xv !== null && yv !== null ? [[xv, yv, Math.abs(yv) / 10]] : [];
+    });
+    if (!scatterData.length) return null;
+    return {
+      backgroundColor: "transparent", animationDuration: compact ? 200 : 600,
+      tooltip: { ...tt, trigger: "item",
+        formatter: (p: { value: [number, number, number] }) =>
+          `${xHint ?? xCol}: ${p.value[0].toLocaleString()}<br/>${yHint ?? yCol}: ${p.value[1].toLocaleString()}` },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 8 },
+      xAxis: { ...AXIS_BASE, type: "value", name: xHint ?? xCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
+      yAxis: { ...AXIS_BASE, type: "value", scale: compact, name: yHint ?? yCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
+      series: [{ type: "scatter", data: scatterData, symbolSize: (d: number[]) => Math.sqrt(d[2]) * 5 + 8,
+        itemStyle: { color: translucent(palette.accent, 0.7), borderColor: palette.accent, borderWidth: 1 } }],
+    };
+  }
+
   return null;
 }
 

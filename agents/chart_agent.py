@@ -69,37 +69,48 @@ WRONG (will silently break the chart):
   y_axis = "Current staffed beds"        # changed case
   y_axis = "Current Staffed Beds (avg)"  # added qualifier
 
-Available chart types (pick EXACTLY ONE):
-- kpi_card             : single big number + trend arrow
-- line_chart           : time series showing trend / trajectory
+Available chart types (pick EXACTLY ONE — 19 types, be creative):
+- kpi_card             : single big number + trend arrow (no chart needed)
+- line_chart           : time series — trend / trajectory of ONE measure over time
 - bar_chart            : comparing ≤8 categories side by side
-- stacked_bar_chart    : categories broken down by a second dimension (e.g. Sales by Region × Segment)
-- horizontal_bar_chart : ranked list — many categories OR when labels are long
-- area_chart           : cumulative volume over time OR stacked proportions over time
-- scatter_chart        : correlation / relationship between two numeric measures
+- stacked_bar_chart    : categories broken down by a second dimension (e.g. Sales × Segment over time)
+- horizontal_bar_chart : ranked list — many categories OR when labels are long names
+- area_chart           : filled time series — cumulative volume or when area adds meaning
+- stacked_area_chart   : part-of-whole CHANGING OVER TIME (e.g. referral status mix per month)
+- scatter_chart        : correlation between TWO numeric measures (one on each axis)
+- bubble_chart         : correlation with a THIRD dimension encoded as bubble size
 - pie_chart            : part-of-whole composition (≤6 slices, when share % is the story)
+- donut_chart          : part-of-whole with center showing the TOTAL or KEY metric
 - map_chart            : any geographic dimension (State, Country, City, Region, Lat/Lon)
-- gauge_chart          : single metric measured against a target or maximum (attainment %)
-- waterfall_chart      : variance / contribution decomposition (what drove the change)
-- table                : last resort — only if no chart type communicates the data
+- gauge_chart          : single metric vs target or maximum — quota attainment, occupancy %, rates
+- waterfall_chart      : variance / contribution decomposition (what DROVE the change)
+- funnel_chart         : conversion pipeline — referral→approval→admission, stages with drop-off
+- heatmap_chart        : TWO categorical dimensions + intensity (dept × time, region × product)
+- treemap_chart        : hierarchical part-of-whole — nested categories by size
+- radar_chart          : multi-dimensional comparison across 3-8 metrics on one chart
+- table                : absolute last resort — only if no chart type works
 
 SELECTION RULES — follow these strictly and be CREATIVE:
 
 ALWAYS use these when the condition is met:
-  → gauge_chart      if the KPI is a %, rate, attainment, quota, coverage, or score vs target
-                     e.g. "quota attainment", "on-time rate", "margin %", "conversion rate"
-  → map_chart        if ANY dimension is geographic (State, Country, City, Latitude, Longitude,
-                     Province, Territory, Postal Code, Region when it maps to a geography)
-  → horizontal_bar_chart  if the chart would rank items (top customers, top products, top reps)
-                          OR if there are >8 categories OR if category labels are long strings
-  → waterfall_chart  if the KPI measures variance, gap, or how components add/subtract to a total
-                     e.g. "sales vs target gap", "forecast variance", "budget variance"
-  → scatter_chart    if you have TWO numeric measures and the story is their relationship
-                     e.g. "sales vs profit by customer", "spend vs return by channel"
-  → pie_chart        if the story is SHARE or COMPOSITION and there are ≤6 categories
-                     e.g. "revenue mix by segment", "order distribution by category"
-  → stacked_bar_chart if you want to show both total AND breakdown simultaneously over categories
-  → area_chart       if showing cumulative volume or how proportions shift over time
+  → gauge_chart         if KPI is a %, rate, attainment, quota, coverage, or score vs target
+  → map_chart           if ANY dimension is geographic (State, Country, City, Lat/Lon, Region)
+  → horizontal_bar_chart if ranking items OR >8 categories OR long label strings
+  → waterfall_chart     if KPI measures variance, gap, or component contribution to a total
+  → scatter_chart       if TWO numeric measures and the story is their relationship
+  → bubble_chart        if THREE measures — two axes + size (e.g. dept: gap vs cost vs patient volume)
+  → funnel_chart        if showing CONVERSION or PIPELINE STAGES with drop-off
+                        e.g. referrals→approved→admitted, leads→qualified→closed
+  → heatmap_chart       if TWO categorical dimensions + one intensity measure
+                        e.g. department × shift × staffing gap, region × month × sales
+  → stacked_area_chart  if showing HOW COMPOSITION CHANGES over time (not just total)
+                        e.g. referral status mix month by month
+  → donut_chart         if part-of-whole AND you want to show the total in the center
+  → treemap_chart       if hierarchical part-of-whole (category → subcategory → item)
+  → radar_chart         if comparing ONE entity across MULTIPLE KPI dimensions simultaneously
+                        e.g. one department scored on: safety, efficiency, cost, quality, staffing
+  → pie_chart           if share/composition story and ≤6 categories (no time dimension)
+  → stacked_bar_chart   if total AND breakdown simultaneously across categories
 
 For time-series data, choose the RIGHT type — NOT always line_chart:
   → line_chart       for trend / trajectory of a single measure over time

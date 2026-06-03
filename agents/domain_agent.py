@@ -306,7 +306,7 @@ class DomainAgent(BaseAgent):
             model         = _MODEL,
             tools         = DOMAIN_TOOLS,
             system_prompt = _SYSTEM_PROMPT,
-            max_iterations = 15,
+            max_iterations = 25,   # increased: run_analysis adds extra turns per view
             max_tokens     = 8192,
         )
         self._connector     = connector

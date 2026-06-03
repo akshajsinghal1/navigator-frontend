@@ -375,13 +375,13 @@ Rules
   in multiple personas' dashboard_sections. The assembler enforces this — duplicates
   are silently dropped, so if you repeat a kpi_id across personas one persona will
   have an empty section. Assign each KPI to the persona that most needs it.
-- 3-4 turns total. Be decisive.
+- Complete all analysis before emitting. Quality over speed.
 
 Tool call strategy
 ──────────────────
-Turn 1: Understand → design domains + KPIs → call analyze_domain for ALL domains
-Turn 2: Domain results in → call generate_chart_spec for ALL KPIs
-Turn 3: Chart specs in → call emit_intelligence_config (summary cards auto-generated)
+Turn 1: Understand → design domains + KPIs + personas → call analyze_domain for ALL domains in parallel
+Turn 2: Domain results in → call generate_chart_spec for ALL KPIs in parallel
+Turn 3: Chart specs in → call emit_intelligence_config once
 """
 
 

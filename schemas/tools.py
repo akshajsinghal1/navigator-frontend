@@ -442,8 +442,11 @@ DOMAIN_TOOLS: list[dict] = [
 # Build the enum list for chart types (from the Literal in config.py)
 _CHART_TYPE_VALUES = [
     "kpi_card", "line_chart", "bar_chart", "stacked_bar_chart",
-    "horizontal_bar_chart", "area_chart", "scatter_chart",
-    "pie_chart", "map_chart", "gauge_chart", "waterfall_chart", "table",
+    "horizontal_bar_chart", "area_chart", "stacked_area_chart",
+    "scatter_chart", "bubble_chart",
+    "pie_chart", "donut_chart", "map_chart", "gauge_chart",
+    "waterfall_chart", "funnel_chart", "heatmap_chart",
+    "treemap_chart", "radar_chart", "table",
 ]
 
 CHART_TOOLS: list[dict] = [

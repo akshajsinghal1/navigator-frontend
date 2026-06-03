@@ -20,17 +20,24 @@ from pydantic import BaseModel, Field
 # The agent picks from this list; the frontend renders accordingly.
 CHART_TYPES = Literal[
     "kpi_card",            # single number + trend arrow
-    "line_chart",          # time series
+    "line_chart",          # time series / trend
     "bar_chart",           # categorical comparison
-    "stacked_bar_chart",   # categorical with breakdown
-    "horizontal_bar_chart",# ranked list
-    "area_chart",          # cumulative / stacked area
-    "scatter_chart",       # correlation / distribution
-    "pie_chart",           # part-of-whole composition
-    "map_chart",           # geographic
-    "gauge_chart",         # metric vs target
-    "waterfall_chart",     # contribution / variance
-    "table",               # raw tabular data
+    "stacked_bar_chart",   # categorical with breakdown stacked
+    "horizontal_bar_chart",# ranked list / long labels
+    "area_chart",          # filled time series / cumulative
+    "stacked_area_chart",  # part-of-whole over time
+    "scatter_chart",       # correlation / two numeric measures
+    "bubble_chart",        # correlation + size = third dimension
+    "pie_chart",           # part-of-whole (≤6 slices)
+    "donut_chart",         # part-of-whole with center metric
+    "map_chart",           # geographic dimension
+    "gauge_chart",         # single metric vs target / max
+    "waterfall_chart",     # contribution / variance decomposition
+    "funnel_chart",        # conversion pipeline / process stages
+    "heatmap_chart",       # two categorical dimensions + intensity
+    "treemap_chart",       # hierarchical part-of-whole
+    "radar_chart",         # multi-dimensional comparison (spider)
+    "table",               # raw tabular — last resort
 ]
 
 
