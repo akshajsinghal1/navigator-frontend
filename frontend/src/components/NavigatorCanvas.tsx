@@ -341,14 +341,10 @@ function SummaryCardItem({ card }: { card: NavigatorSummaryCard }) {
           {card.title}
         </span>
       </div>
-      {/* Body — 2 lines max */}
+      {/* Body — full text */}
       <p style={{
         fontFamily: CHART_FONT, fontSize: 11,
-        color: palette.ink3, lineHeight: 1.4, margin: 0,
-        display: "-webkit-box",
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
+        color: palette.ink3, lineHeight: 1.5, margin: 0,
       }}>
         {card.body}
       </p>
@@ -592,7 +588,18 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
         {loading ? "…" : formatL1(displayValue, unit)}
       </span>
 
-      {/* No sparkline — tile is name + value only; full chart opens on click */}
+      {/* Chart — correct type at compact height; full detail on click */}
+      {(kpi.chart?.type ?? "kpi_card") !== "kpi_card" && (kpi.chart?.type ?? "") !== "scorecard" && (
+        <div style={{ marginTop: 4 }}>
+          <NavigatorKpiChart
+            kpi={kpi}
+            rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
+            loading={loading}
+            height={60}
+            maxPoints={20}
+          />
+        </div>
+      )}
     </button>
   );
 }

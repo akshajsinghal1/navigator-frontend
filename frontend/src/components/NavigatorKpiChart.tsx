@@ -718,19 +718,24 @@ function buildOption(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
-  kpi:      NavigatorKPI;
-  rows:     Record<string, unknown>[];  // pre-fetched by NavigatorKpiCard (all historical rows)
-  loading:  boolean;
-  period?:  Period;   // current period selection — drives projection overlay
-  height?:  number;
+  kpi:       NavigatorKPI;
+  rows:      Record<string, unknown>[];  // pre-fetched by NavigatorKpiCard (all historical rows)
+  loading:   boolean;
+  period?:   Period;   // current period selection — drives projection overlay
+  height?:   number;
+  maxPoints?: number;  // limit data points for compact/tile view (avoids noisy charts)
 }
 
-export function NavigatorKpiChart({ kpi, rows, loading, period = "now", height = 240 }: Props) {
+export function NavigatorKpiChart({ kpi, rows, loading, period = "now", height = 240, maxPoints }: Props) {
+  // For tile/compact view: sample rows to avoid overwhelming a small chart
+  const displayRows = maxPoints && rows.length > maxPoints
+    ? rows.filter((_, i) => i % Math.ceil(rows.length / maxPoints) === 0).slice(0, maxPoints)
+    : rows;
   const { palette } = useChartTheme();
 
   const option = useMemo(
-    () => buildOption(kpi, rows, palette, period),
-    [kpi, rows, palette, period],
+    () => buildOption(kpi, displayRows, palette, period),
+    [kpi, displayRows, palette, period],
   );
 
   if (loading) {
