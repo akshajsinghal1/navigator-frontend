@@ -91,6 +91,39 @@ function parseNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+// ── Confidence interval detection ─────────────────────────────────────────────
+// Finds upper/lower bound columns in rows for rendering prediction bands.
+// Works automatically for any Tableau view that has interval columns.
+
+function findConfidenceCols(
+  rows: Record<string, unknown>[],
+  yCol: string,
+): { lower: string | null; upper: string | null } {
+  if (!rows.length) return { lower: null, upper: null };
+  const cols = Object.keys(rows[0]).filter((c) => c !== yCol);
+
+  // Keywords that signal a confidence/prediction column
+  const LOWER = ["lower", "low", " min", "p10", "lb", "lcl"];
+  const UPPER = ["upper", "high", " max", "p90", "ub", "ucl"];
+  const CONTEXT = ["interval", "bound", "confidence", "prediction", "forecast"];
+
+  const isContext = (n: string) => CONTEXT.some((k) => n.includes(k));
+  const isNumericCol = (col: string) =>
+    rows.slice(0, 5).some((r) => parseNum(r[col]) !== null);
+
+  const lower = cols.find((c) => {
+    const n = norm(c);
+    return LOWER.some((k) => n.includes(k)) && (isContext(n) || isNumericCol(c));
+  }) ?? null;
+
+  const upper = cols.find((c) => {
+    const n = norm(c);
+    return UPPER.some((k) => n.includes(k)) && (isContext(n) || isNumericCol(c));
+  }) ?? null;
+
+  return { lower, upper };
+}
+
 function aggregate(vals: number[], method: string): number {
   if (!vals.length) return 0;
   switch (method.toLowerCase()) {
@@ -345,11 +378,38 @@ function buildOption(
     splitLine: { lineStyle: { color: palette.line, type: "dashed" } },
   };
 
+  // ── Detect confidence interval columns ──────────────────────────────────
+  // Automatically finds upper/lower prediction interval columns in the rows.
+  // Works for any Tableau view that exports confidence bounds.
+  const { lower: lowerCol, upper: upperCol } = findConfidenceCols(rows, yCol!);
+  const hasCI = !!(lowerCol && upperCol);
+
+  // Build grouped confidence data aligned to xData
+  let lowerData: (number | null)[] = [];
+  let upperData: (number | null)[] = [];
+  if (hasCI) {
+    const lowerMap = new Map<string, number[]>();
+    const upperMap = new Map<string, number[]>();
+    for (const row of rows) {
+      const key = String(row[xCol!] ?? "(null)");
+      const lo  = parseNum(row[lowerCol!]);
+      const hi  = parseNum(row[upperCol!]);
+      if (lo !== null) { if (!lowerMap.has(key)) lowerMap.set(key, []); lowerMap.get(key)!.push(lo); }
+      if (hi !== null) { if (!upperMap.has(key)) upperMap.set(key, []); upperMap.get(key)!.push(hi); }
+    }
+    lowerData = xData.map((x) => {
+      const vals = lowerMap.get(x);
+      return vals?.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    });
+    upperData = xData.map((x) => {
+      const vals = upperMap.get(x);
+      return vals?.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    });
+  }
+
   // ── Line / Area ──────────────────────────────────────────────────────────
   if (ctype === "line_chart" || ctype === "area_chart") {
     const hasProj = projPoints.length > 0;
-    // Actual series uses only historical x-labels; projected series uses all x-labels
-    // but pads the historical portion with null so the dashed line starts at the join.
     const projYData = hasProj
       ? [...new Array(xData.length - 1).fill(null), yData[yData.length - 1], ...projPoints.map((p) => p.y)]
       : [];
@@ -358,7 +418,7 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: 600,
       tooltip: { ...tt, trigger: "axis" },
-      grid: { left: 46, right: 16, top: 12, bottom: 36 },
+      grid: { left: 46, right: 16, top: hasCI ? 16 : 12, bottom: 36 },
       xAxis: {
         ...AXIS_BASE,
         type: "category",
@@ -371,6 +431,32 @@ function buildOption(
       },
       yAxis: { ...AXIS_BASE, type: "value" },
       series: [
+        // Confidence band — lower bound (invisible fill base)
+        ...(hasCI ? [{
+          name: "Lower Bound",
+          type: "line",
+          data: lowerData,
+          symbol: "none",
+          lineStyle: { opacity: 0 },
+          areaStyle: { color: "transparent" },
+          stack: "confidence",
+          tooltip: { show: false },
+        }] : []),
+        // Confidence band — upper fill (stacks on lower → fills the gap)
+        ...(hasCI ? [{
+          name: "Confidence Band",
+          type: "line",
+          data: upperData.map((u, i) => {
+            const lo = lowerData[i];
+            return (u !== null && lo !== null) ? u - lo : null;
+          }),
+          symbol: "none",
+          lineStyle: { opacity: 0 },
+          areaStyle: { color: translucent(palette.accent, 0.12) },
+          stack: "confidence",
+          tooltip: { show: false },
+        }] : []),
+        // Main series
         {
           name: kpi.name,
           type: "line",
@@ -378,8 +464,10 @@ function buildOption(
           smooth: false,
           symbol: "none",
           lineStyle: { color: palette.accent, width: 2 },
-          areaStyle: { color: translucent(palette.accent, 0.08) },
+          areaStyle: hasCI ? undefined : { color: translucent(palette.accent, 0.08) },
+          z: 3,
         },
+        // Projection dashed series
         ...(hasProj ? [{
           name: "Projected",
           type: "line",
@@ -390,6 +478,7 @@ function buildOption(
           lineStyle: { color: palette.accent, width: 2, type: "dashed", opacity: 0.6 },
           itemStyle: { color: palette.accent, opacity: 0.6 },
           areaStyle: { color: translucent(palette.accent, 0.03) },
+          z: 3,
         }] : []),
       ],
     };
@@ -400,6 +489,18 @@ function buildOption(
     const hasProj = projPoints.length > 0;
     const projBarData = hasProj
       ? [...new Array(xData.length).fill(null), ...projPoints.map((p) => p.y)]
+      : [];
+
+    // Whisker marks for confidence intervals
+    const markLineData = hasCI
+      ? xData.flatMap((x, i) => {
+          const lo = lowerData[i];
+          const hi = upperData[i];
+          if (lo === null || hi === null) return [];
+          return [
+            [{ coord: [x, lo], symbol: "none" }, { coord: [x, hi], symbol: "none" }],
+          ];
+        })
       : [];
 
     return {
@@ -430,6 +531,15 @@ function buildOption(
             },
             borderRadius: [3, 3, 0, 0],
           },
+          // Whisker lines for confidence intervals
+          ...(hasCI && markLineData.length ? {
+            markLine: {
+              silent: true,
+              symbol: ["none", "none"],
+              lineStyle: { color: palette.ink3, width: 1.5, type: "solid" },
+              data: markLineData,
+            },
+          } : {}),
         },
         ...(hasProj ? [{
           name: "Projected",
