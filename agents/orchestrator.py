@@ -248,6 +248,17 @@ Use them in NEW ways to surface NEW insight. Several techniques:
    - View has (Region, Category, Sales) → workbook shows by Region;
      you show by Category, or Category WITHIN Region
 
+   ALWAYS look for these high-value dimensions if they exist in the data:
+   - Facility / Facility Name / Site → show KPIs per facility, not just aggregate
+   - Department / Unit / Team → break KPIs down to operational unit level
+   - Region / Geography → geographic breakdown of any metric
+   - Shift / Shift Name → operational timing breakdown
+
+   A KPI showing aggregate occupancy across all facilities is far less actionable
+   than one showing which SPECIFIC facility is at capacity risk.
+   If Facility Name is in the reachable fields, at least ONE KPI per persona
+   should use it as the x-axis or breakdown dimension.
+
 3. CONSTRUCT ratios from same-view fields
    - View has (Profit, Sales) → KPI "Margin per Region" = Profit/Sales
    - View has (Returned, Quantity) → KPI "Return Rate" = Returned/Quantity
