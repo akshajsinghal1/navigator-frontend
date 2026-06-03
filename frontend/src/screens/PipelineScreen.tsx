@@ -213,13 +213,14 @@ function InventoryPreview({ inv, palette, isComplete }: {
           }}>
             Views / Sheets
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {/* internal scroll when many views */}
+          <div style={{ maxHeight: 150, overflowY: "auto", display: "flex", flexWrap: "wrap", gap: 6 }}>
             {inv.views.map((v) => (
               <span key={v.name} style={{
                 fontFamily: CHART_FONT, fontSize: 11,
                 padding: "3px 9px", borderRadius: 4,
                 background: palette.bg2, border: `1px solid ${palette.line}`,
-                color: palette.ink2,
+                color: palette.ink2, flexShrink: 0,
               }}>
                 {v.name}
               </span>
@@ -460,6 +461,8 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
         gap: 32,
         alignItems: "start",
         transition: "max-width 0.4s ease",
+        // Ensure the main area is tall enough for sticky to work
+        minHeight: "calc(100vh - 60px)",
       }}>
 
         {/* Left — progress */}
@@ -542,9 +545,16 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
           )}
         </div>
 
-        {/* Right — inventory preview (slides in when available) */}
+        {/* Right — inventory preview, sticky so it stays fixed as left grows */}
         {showInv && (
-          <InventoryPreview inv={inv!} palette={palette} isComplete={isComplete} />
+          <div style={{
+            position: "sticky",
+            top: 24,
+            maxHeight: "calc(100vh - 100px)",
+            overflowY: "auto",
+          }}>
+            <InventoryPreview inv={inv!} palette={palette} isComplete={isComplete} />
+          </div>
         )}
 
       </main>
