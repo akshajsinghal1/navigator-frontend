@@ -579,7 +579,7 @@ function buildOption(
           ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, hideOverlap: true },
       },
-      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
+      yAxis: { ...AXIS_BASE, type: "value" },  // bar: always start from 0
       series: [
         {
           name: kpi.name,
@@ -734,7 +734,7 @@ function buildOption(
         data: xData,
         axisLabel: { ...AXIS_BASE.axisLabel, rotate: xData.length > 6 ? 30 : 0 },
       },
-      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
+      yAxis: { ...AXIS_BASE, type: "value" },  // waterfall: always start from 0
       series: [{
         name: kpi.name,
         type: "bar",
