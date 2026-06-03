@@ -464,8 +464,10 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:   allX.length > 6 ? 30 : 0,
-          ...(compact ? {} : { interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0, hideOverlap: false }),
+          rotate: allX.length > 6 ? 30 : 0,
+          ...(compact
+            ? { interval: allX.length, showMinLabel: true, showMaxLabel: true }
+            : { interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
@@ -553,9 +555,14 @@ function buildOption(
         data: hasProj ? allX : xData,
         axisLabel: {
           ...AXIS_BASE.axisLabel,
-          rotate:   allX.length > 6 ? 35 : 0,
-          // No explicit align — ECharts default handles rotated labels correctly
-          ...(compact ? {} : { interval: 0, hideOverlap: false }),
+          rotate: allX.length > 6 ? 35 : 0,
+          // compact: show only first + last label (derived from data, never hardcoded)
+          //   interval = data.length skips all middle labels
+          //   showMinLabel + showMaxLabel force first/last to always render
+          // full: show every label (interval:0)
+          ...(compact
+            ? { interval: allX.length, showMinLabel: true, showMaxLabel: true }
+            : { interval: 0 }),
         },
       },
       yAxis: { ...AXIS_BASE, type: "value" },
