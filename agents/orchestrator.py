@@ -373,14 +373,13 @@ Rules
 - One objective sentence. Design as many personas, domains, and KPIs as the workbook genuinely
   supports — NEVER cap artificially. Every KPI must be distinct and data-backed.
 
-- SCALE REQUIREMENT — this is mandatory, not a suggestion:
-  Every view in `available_api_views` must contribute to at least one KPI. With N views
-  you must design approximately N/2 KPIs across multiple domains and personas. If this
-  workbook has 20 views, expect 10+ KPIs. If it has 33 views, expect 15+ KPIs. If you
-  finish and have used fewer than half the available views, you have not finished.
-  Before calling generate_chart_spec, scan your KPI list against available_api_views.
-  Any view not yet used must become at least one additional KPI — or be explicitly
-  excluded with a one-line reason (e.g. "ADMIN_METADATA — no business metric inside").
+- VIEW COVERAGE — mandatory:
+  Every view in `available_api_views` must appear in at least one domain's relevant_views.
+  Before calling generate_chart_spec, mentally walk through available_api_views and confirm
+  each view has been assigned to a domain. If any view is missing, add it to an appropriate
+  domain (or create a new domain for it) and design at least one KPI from it.
+  The only exception: a view that is purely administrative (no measurable business metric
+  inside) — exclude it explicitly with a one-line note in that domain's description.
 
 - DEDUPLICATION — before emitting, scan your KPI list for near-duplicate metrics. Two KPIs
   measuring the same underlying fact are near-duplicates even if named differently:
@@ -402,13 +401,13 @@ Tool call strategy — maximize coverage, not minimize turns
 You MUST cover every available view. Use as many analyze_domain turns as needed.
 
 Phase A — Domain analysis (repeat until ALL views are covered):
-  Call analyze_domain in batches. Group related views into one domain call.
-  A domain can cover 3-6 views at once. With 10+ views, you will need multiple
-  analyze_domain turns — that is expected and correct. Each turn can call
-  multiple analyze_domain tools simultaneously.
+  Group related views into domains. Call analyze_domain for multiple domains
+  simultaneously within each turn. Keep going until every view in
+  available_api_views has been assigned to a domain and analyzed.
+  Each domain call receives relevant_views and kpi_designs — the domain agent
+  fetches data and computes ALL KPIs in that domain in a single call.
 
-  STOP Phase A only when every view in available_api_views appears in at
-  least one domain's relevant_views list.
+  STOP Phase A only when every view in available_api_views has been covered.
 
 Phase B — Chart specs (one turn):
   Call generate_chart_spec for ALL KPIs from all domains simultaneously.
@@ -416,8 +415,8 @@ Phase B — Chart specs (one turn):
 Phase C — Emit (one turn):
   Call emit_intelligence_config ONCE.
 
-There is NO turn limit. Do not rush. Do not compress domains to fit in fewer turns.
-A workbook with 30 views should produce 3-5 Phase-A turns, not 1.
+There is NO turn limit. Breadth of coverage matters more than speed.
+Do not compress many views into a single domain just to finish faster.
 """
 
 
@@ -506,33 +505,30 @@ class OrchestratorAgent(BaseAgent):
 
         n_views  = len(self._available_views) if self._available_views else 0
         n_fields = len(reachable_fields_summary)
-        min_kpis = max(6, n_views // 2)  # at least half the views should produce KPIs
+        # n_views / n_fields are passed as informational context only — no hardcoded minimums
 
         user_msg = json.dumps({
             "workbook_inventory":  filtered_inventory,
             "eda_pre_analysis":    eda_text or None,
             "available_api_views": self._available_views or None,
             "reachable_fields":    reachable_fields_summary or None,
-            "scale_requirements": {
-                "total_views":   n_views,
-                "total_fields":  n_fields,
-                "minimum_kpis":  min_kpis,
-                "note": (
-                    f"This workbook has {n_views} views and {n_fields} reachable fields. "
-                    f"You MUST design at least {min_kpis} KPIs. "
-                    f"Every view in available_api_views must be used in at least one KPI "
-                    f"unless it is purely administrative (no business metric). "
-                    f"Use multiple analyze_domain turns to cover all views — "
-                    f"do NOT compress all views into 2-3 domains."
+            "workbook_scale": {
+                "total_views":  n_views,
+                "total_fields": n_fields,
+                "coverage_requirement": (
+                    "Every view in available_api_views must be covered by at least one domain. "
+                    "Run as many Phase-A analyze_domain turns as needed to achieve full coverage. "
+                    "Do not compress all views into a single batch — group by business topic."
                 ),
             },
             "task": (
-                f"Analyze this Tableau workbook ({n_views} views, {n_fields} fields). "
-                "Identify the single business objective and design COMPREHENSIVE intelligence: "
-                f"aim for {min_kpis}+ KPIs across 4-8 personas — NOT 3 personas and 12 KPIs. "
+                "Analyze this Tableau workbook. Identify the single business objective and "
+                "design intelligence that fully covers every available view — use as many domains "
+                "and personas as the data genuinely warrants, and use as many analyze_domain "
+                "turns as needed (Phase A) to cover all views before moving to chart specs (Phase B) "
+                "and emit (Phase C). "
                 "CRITICAL — use EXACT 'name' values from 'reachable_fields' for ALL field names. "
-                "Call analyze_domain in multiple batches (Phase A) until every view is covered. "
-                "Then generate_chart_spec for all KPIs (Phase B). Then emit (Phase C)."
+                "When calling analyze_domain, only pass view names from 'available_api_views'."
             ),
         }, indent=2, default=_json_default)
 
