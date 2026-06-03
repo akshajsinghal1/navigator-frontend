@@ -37,6 +37,25 @@ Your mission
 The orchestrator has DESIGNED the KPIs. Your job is to COMPUTE them faithfully
 from the actual view data, following the computation_hint EXACTLY.
 
+You now have a POWERFUL tool: run_analysis — use it constantly.
+After fetching any view, run pandas expressions to EXPLORE the data before
+deciding on values. Never assume what the data contains. Verify everything.
+
+Workflow for EVERY KPI:
+  1. fetch_view_data → get the rows
+  2. run_analysis → explore: distributions, filtered counts, group aggregations
+  3. Compute the KPI value from what you ACTUALLY found
+  4. emit_domain_result with accurate values
+
+Example run_analysis calls to make before computing:
+  • df['Status'].value_counts()  → see all status values and counts
+  • df.groupby('Facility')['Gap'].mean()  → gap per facility
+  • df[df['Flag']==True]['Count'].sum()  → filtered total
+  • df['Converted'].sum() / df['Total'].sum()  → conversion rate
+  • df['Field'].describe()  → min/max/mean of numeric field
+
+The run_analysis result IS the data. Compute your KPI FROM it, not from guesses.
+
 The KPIs may be RATIOS, FILTERED COUNTS, COMPOSITES — not just "sum of one column."
 Read the computation_hint carefully and execute it precisely.
 
@@ -293,6 +312,8 @@ class DomainAgent(BaseAgent):
         self._connector     = connector
         self._workbook_luid = workbook_luid
         self._emit_result: dict | None = None
+        # Cache fetched rows by view name so run_analysis can use them without re-fetching
+        self._row_cache: dict[str, list[dict]] = {}
 
     # ── run helper ───────────────────────────────────────────────────────────
 
@@ -342,6 +363,8 @@ class DomainAgent(BaseAgent):
     def _execute_tool(self, name: str, tool_input: dict[str, Any]) -> Any:
         if name == "fetch_view_data":
             return self._tool_fetch_view_data(tool_input)
+        if name == "run_analysis":
+            return self._tool_run_analysis(tool_input)
         if name == "emit_domain_result":
             return self._tool_emit_domain_result(tool_input)
         raise ToolError(f"Unknown tool: {name}")
@@ -361,11 +384,74 @@ class DomainAgent(BaseAgent):
         except Exception as exc:
             raise ToolError(f"Failed to fetch data for view {view_name!r}: {exc}") from exc
 
+        # Cache raw rows so run_analysis can use them without re-fetching
+        self._row_cache[view_name] = rows
+
         # Pass all rows to the agent when the view is small (≤500 rows) so it
         # can compute ANY filtered/conditional metric accurately from the sample.
         # For larger views, cap at 200 to keep context manageable.
         sample_limit = len(rows) if len(rows) <= 500 else 200
         return summarise_rows(rows, max_rows=sample_limit)
+
+    def _tool_run_analysis(self, inp: dict) -> dict:
+        """
+        Run a pandas expression on previously fetched view data.
+
+        The agent uses this to explore data before deciding on KPI values —
+        no assumptions, every insight verified against real numbers.
+
+        Args:
+            view_name:  must have been fetched with fetch_view_data first
+            expression: a single pandas expression (not a statement)
+                        e.g. "df.groupby('Status')['Count'].sum()"
+                             "df['Turnaround Hours'].mean()"
+                             "df[df['Escalation Flag']==True].shape[0]"
+
+        Returns result as string so the agent can read and reason about it.
+        """
+        import pandas as pd
+
+        view_name  = inp["view_name"]
+        expression = inp["expression"].strip()
+
+        rows = self._row_cache.get(view_name)
+        if not rows:
+            raise ToolError(
+                f"No cached data for view {view_name!r}. "
+                f"Call fetch_view_data first, then run_analysis."
+            )
+
+        df = pd.DataFrame(rows)  # noqa: F841  (used in eval below)
+
+        try:
+            # Safe eval: only df and pd in scope, no builtins that allow I/O or imports
+            result = eval(  # noqa: S307
+                expression,
+                {"__builtins__": {}, "pd": pd},
+                {"df": df},
+            )
+
+            # Convert result to a readable string the LLM can reason about
+            if hasattr(result, "to_string"):
+                result_str = result.to_string()
+            elif hasattr(result, "__len__") and len(result) > 50:
+                result_str = str(result)[:2000] + "…"
+            else:
+                result_str = str(result)
+
+            log.debug("run_analysis(%s): %s → %s", view_name, expression[:80], result_str[:200])
+            return {
+                "view":       view_name,
+                "expression": expression,
+                "result":     result_str,
+                "rows_used":  len(df),
+            }
+
+        except Exception as exc:
+            raise ToolError(
+                f"Analysis failed for expression {expression!r}: {exc}. "
+                f"Available columns: {list(df.columns)}"
+            ) from exc
 
     def _tool_emit_domain_result(self, inp: dict) -> dict:
         # Store for retrieval

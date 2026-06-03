@@ -235,7 +235,8 @@ DOMAIN_TOOLS: list[dict] = [
         "description": (
             "Fetch the data underlying a Tableau view/sheet as a list of rows. "
             "Use this to get actual KPI values, time-series data, and breakdowns. "
-            "Returns up to 200 rows by default."
+            "Returns up to 200 rows by default. "
+            "After fetching, use run_analysis to explore the data with pandas before computing KPIs."
         ),
         "input_schema": _OBJECT(
             {
@@ -258,6 +259,46 @@ DOMAIN_TOOLS: list[dict] = [
                 },
             },
             required=["view_name"],
+        ),
+    },
+
+    {
+        "name": "run_analysis",
+        "description": (
+            "Run a pandas expression on data previously fetched with fetch_view_data. "
+            "Use this to explore the data, verify values, and compute derived metrics "
+            "BEFORE deciding on KPI values. This eliminates assumptions — you verify "
+            "everything against real data.\n\n"
+            "Call fetch_view_data first, then use run_analysis to explore:\n"
+            "  - Distribution of values: df['Status'].value_counts()\n"
+            "  - Filtered counts: df[df['Flag']==True].shape[0]\n"
+            "  - Group aggregations: df.groupby('Department')['Gap'].mean()\n"
+            "  - Conversion rates: df['Converted'].sum() / df['Total'].sum()\n"
+            "  - Correlations: df[['Field1','Field2']].corr()\n"
+            "  - Time ranges: df['Date'].min(), df['Date'].max()\n\n"
+            "ALWAYS use run_analysis before computing a KPI value — never assume "
+            "what the data contains. The result tells you exactly what to compute."
+        ),
+        "input_schema": _OBJECT(
+            {
+                "view_name": {
+                    **_STRING,
+                    "description": "View name that was already fetched with fetch_view_data",
+                },
+                "expression": {
+                    **_STRING,
+                    "description": (
+                        "A single pandas expression (not a statement, no assignments). "
+                        "The DataFrame is available as 'df'. Examples:\n"
+                        "  df['Referral Status'].value_counts()\n"
+                        "  df[df['Escalation Flag']==True]['Referral Count'].sum()\n"
+                        "  df.groupby('Facility Name')['Staffing Gap'].mean().sort_values()\n"
+                        "  df['Converted Count'].sum() / df['Referral Count'].sum()\n"
+                        "  df.groupby('Insurance Type')['Rejected Count'].sum()"
+                    ),
+                },
+            },
+            required=["view_name", "expression"],
         ),
     },
 
