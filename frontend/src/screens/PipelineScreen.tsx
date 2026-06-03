@@ -170,14 +170,12 @@ function InventoryPreview({ inv, palette, isComplete }: {
         }}>
           {inv.workbook_name}
         </div>
-        {inv.objective && (
-          <div style={{
-            fontFamily: CHART_FONT, fontSize: 12, color: palette.ink3,
-            lineHeight: 1.4, marginTop: 4,
-          }}>
-            {inv.objective}
-          </div>
-        )}
+        <div style={{
+          fontFamily: CHART_FONT, fontSize: 12, color: palette.ink3,
+          lineHeight: 1.4, marginTop: 2,
+        }}>
+          {inv.view_count || inv.views.length} views · {inv.datasources.length} data sources · {inv.total_fields} fields
+        </div>
       </div>
 
       {/* Stats row */}
@@ -264,8 +262,8 @@ function InventoryPreview({ inv, palette, isComplete }: {
         </div>
       )}
 
-      {/* Personas (appear once orchestrator runs) */}
-      {inv.personas.length > 0 && (
+      {/* Personas removed — they belong on the dashboard, not the Tableau inventory panel */}
+      {false && inv.personas.length > 0 && (
         <div>
           <div style={{
             fontFamily: CHART_NUM_FONT, fontSize: 10, fontWeight: 700,
