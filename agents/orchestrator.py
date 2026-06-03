@@ -286,6 +286,23 @@ For each KPI:
      when referencing columns (e.g. "sum of 'Sales' where 'Region'='West'", not
      "sum of sales where region is West").
 
+ADAPT KPI DEPTH TO PERSONA ROLE — this is not a fixed rule, use your judgment:
+The persona's role naturally signals what kind of intelligence they need.
+  → A CFO, VP, or Director cares about the headline: is the business healthy?
+    Design fewer KPIs (4-6), high business impact, simple framing.
+    KPI names should be questions an executive asks in a board meeting.
+    Focus on outcomes (revenue, margin, risk) not operational mechanics.
+  → A Manager or Operations lead cares about levers they can pull:
+    Design more KPIs (6-10), operational coverage, team and process metrics.
+    Include breakdowns, efficiency ratios, and performance against targets.
+  → An Analyst or technical persona cares about the full picture:
+    Design comprehensive KPIs including derived ratios, correlations, distributions.
+    More KPIs are fine, include technical metrics and multi-dimensional analysis.
+
+This is about what the DATA and ROLE together suggest — not a rigid formula.
+A CFO with rich financial data might still warrant 8 KPIs. An analyst with
+limited data might only support 4. Let context drive the judgment.
+
 QUALITY GATE — before emitting, ask yourself for each KPI:
   - Could a non-analyst tell this apart from the workbook's existing view? If "no"
     you've been lazy. Redesign.

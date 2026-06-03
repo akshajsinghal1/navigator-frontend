@@ -111,9 +111,36 @@ DIVERSITY — across the full set of KPIs in a workbook, a mix of chart types is
 If you find yourself picking line_chart or bar_chart for the third time in a row, stop and
 reconsider — there is almost always a more expressive chart type for at least one of them.
 
+ADAPT TO PERSONA ROLE — use judgment, not rules:
+The `persona_role` tells you who will read this dashboard. Let it shape both
+your chart choice and your explanation style.
+
+  → Executive role (CFO, VP, Director, Chief X Officer):
+    Chart: prefer simpler, immediately readable types — kpi_card, line_chart,
+    gauge_chart, bar_chart. Avoid scatter_chart or overly complex breakdowns.
+    One clear message per chart. If in doubt, simpler wins.
+    Explanation: plain business language. No field names. No jargon.
+    Lead with the business implication: "Revenue is on track" not "Sum of Sales".
+    Key insight should answer: "So what does this mean for my decisions?"
+
+  → Manager / operational role (Operations Manager, Sales Manager, Team Lead):
+    Chart: use the full range — horizontal_bar_chart for rankings, stacked for
+    breakdowns, waterfall for gaps. More complexity is fine.
+    Explanation: operational framing. "Which team / region / product to focus on?"
+    Include specific sub-segments and comparison to targets or peers.
+
+  → Analyst / technical role (BI Analyst, Data Scientist, Revenue Ops):
+    Chart: prefer information-dense types — scatter_chart for correlations,
+    stacked_bar_chart for multi-dimensional breakdowns, area_chart for trends.
+    Explanation: can be technical. Field names and methodology are fine.
+    Key insight can reference statistical observations or distribution patterns.
+
+This is about reading the persona role and adapting naturally — not a formula.
+A "Sales Director" is executive. A "Customer Success Manager" is managerial.
+Use common sense about who reads this and what they need.
+
 Explanation principles:
-- Write for a business executive, not a data analyst
-- "What" = what this KPI measures (one sentence, no jargon)
+- "What" = what this KPI measures (one sentence, appropriate to persona level)
 - "Why it matters" = direct connection to the business objective
 - "Trend" = directional language: "Up 12% vs prior period" or "Declining since Q3"
 - "Risk" = flag ONLY if genuinely concerning — use the anomaly from the domain agent if provided;
@@ -203,14 +230,16 @@ class ChartAgent(BaseAgent):
                 "raw_data_sample":   raw_data_sample or [],
             },
             "task": (
-                f"Select the MOST EXPRESSIVE chart type for '{kpi_name}'. "
-                f"Do not default to bar_chart or line_chart — read the selection rules carefully "
-                f"and consider gauge_chart, waterfall_chart, pie_chart, scatter_chart, "
-                f"horizontal_bar_chart, area_chart, and map_chart before settling on a choice. "
+                f"Select the MOST EXPRESSIVE chart type for '{kpi_name}' "
+                f"keeping in mind the persona '{persona_role}'. "
+                f"Read the persona role and adapt: executive roles need simpler charts and "
+                f"plain business explanations; operational managers need operational detail; "
+                f"analysts can handle complex charts and technical language. "
+                f"Do not default to bar_chart or line_chart — consider the full range of chart types. "
                 f"Base 'key_insight' and 'risk' on the domain_agent_findings above — "
                 f"these contain REAL data from Tableau. Do not fabricate. "
                 f"This KPI belongs to the '{domain}' domain. "
-                f"The persona is '{persona_role}' and the business objective is: {objective}"
+                f"Business objective: {objective}"
             ),
         }, indent=2)
 
