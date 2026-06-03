@@ -847,20 +847,45 @@ function buildOption(
     if (!byCol || !xCol) return null;
     const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
     const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
-    // Find intensity column: first numeric column that isn't xCol or byCol
-    // Falls back to count-per-cell (1) if no numeric column exists
+    // ── Find intensity column and value mapper ───────────────────────────
     const cols = rows.length ? Object.keys(rows[0]) : [];
-    const intensityCol = cols.find(c => c !== xCol && c !== byCol && rows.slice(0,5).some(r => parseNum(r[c]) !== null));
 
-    // Build intensity map: for count-based (no numeric col), count occurrences per cell
+    // Severity mappings for categorical columns (HIGH→3, RED→3, etc.)
+    const SEVERITY_MAP: Record<string, number> = {
+      high: 3, critical: 3, red: 3, danger: 3, alert: 3,
+      medium: 2, moderate: 2, amber: 2, warning: 2, caution: 2,
+      low: 1, normal: 1, green: 1, safe: 1, ok: 1, good: 1,
+    };
+    const severityScore = (v: unknown): number | null => {
+      const s = String(v ?? "").toLowerCase().trim();
+      return SEVERITY_MAP[s] ?? null;
+    };
+
+    // Find intensity: prefer numeric column, then severity-mapped categorical
+    const intensityCol = cols.find(c =>
+      c !== xCol && c !== byCol &&
+      rows.slice(0, 5).some(r => parseNum(r[c]) !== null)
+    );
+    const severityCol = !intensityCol ? cols.find(c =>
+      c !== xCol && c !== byCol &&
+      rows.slice(0, 5).some(r => severityScore(r[c]) !== null)
+    ) : null;
+
+    const getVal = (row: Record<string, unknown>): number | null => {
+      if (intensityCol) return parseNum(row[intensityCol]);
+      if (severityCol)  return severityScore(row[severityCol]);
+      return 1; // count-per-cell fallback
+    };
+
+    // Build cell map
     const cellMap = new Map<string, number[]>();
     for (const row of rows) {
       const xi = xVals.indexOf(String(row[xCol!] ?? ""));
       const yi = yVals.indexOf(String(row[byCol!] ?? ""));
       if (xi < 0 || yi < 0) continue;
-      const key = `${xi},${yi}`;
-      const v = intensityCol ? parseNum(row[intensityCol]) : 1;
+      const v = getVal(row);
       if (v !== null) {
+        const key = `${xi},${yi}`;
         if (!cellMap.has(key)) cellMap.set(key, []);
         cellMap.get(key)!.push(v);
       }
