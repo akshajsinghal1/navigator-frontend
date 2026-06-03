@@ -593,14 +593,12 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
         {loading ? "…" : formatL1(displayValue, unit)}
       </span>
 
-      {/* Row 3: actual chart (correct type — bar, line, waterfall, etc.) */}
+      {/* Row 3: mini sparkline — clean trend indicator, full chart opens on click */}
       {(kpi.chart?.type ?? "kpi_card") !== "kpi_card" && (kpi.chart?.type ?? "") !== "scorecard" && (
-        <div style={{ marginTop: 4 }}>
-          <NavigatorKpiChart
-            kpi={kpi}
-            rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
-            loading={loading}
-            height={60}
+        <div style={{ marginTop: 2 }}>
+          <MiniSparkline
+            rawData={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
+            color={palette.accent}
           />
         </div>
       )}
