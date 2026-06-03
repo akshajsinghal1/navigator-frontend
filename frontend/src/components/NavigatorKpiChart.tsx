@@ -727,7 +727,7 @@ function buildOption(
       backgroundColor: "transparent",
       animationDuration: 600,
       tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { left: 56, right: 16, top: 12, bottom: 36 },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 8 },
       xAxis: {
         ...AXIS_BASE,
         type: "category",
@@ -770,7 +770,7 @@ function buildOption(
         formatter: (p: { value: [number, number] }) =>
           `${xHint ?? xCol}: ${p.value[0].toLocaleString()}<br/>${yHint ?? yCol}: ${p.value[1].toLocaleString()}`,
       },
-      grid: { left: 56, right: 16, top: 12, bottom: 36 },
+      grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value", name: xHint ?? xCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
       yAxis: { ...AXIS_BASE, type: "value", name: yHint ?? yCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
       series: [{
@@ -895,14 +895,46 @@ function buildOption(
       return [xi, yi, vals.reduce((a, b) => a + b, 0) / vals.length];
     });
     if (!heatData.length) return null;
+
+    const hmXLabel = compact
+      ? { show: false }  // hide in tile — too crowded
+      : {
+          color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 9,
+          rotate: xVals.length > 4 ? 35 : 0,
+          hideOverlap: true,
+          // compact mode is handled above; full mode: let containLabel handle margins
+        };
+    const hmYLabel = {
+      color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 9,
+      overflow: "truncate" as const,
+      width: compact ? 60 : 100,
+    };
+
     return {
       backgroundColor: "transparent",
-      tooltip: { ...tt, formatter: (p: { value: [number, number, number] }) =>
+      animationDuration: compact ? 200 : 600,
+      tooltip: compact ? { show: false } : { ...tt, formatter: (p: { value: [number, number, number] }) =>
         `${xVals[p.value[0]]} / ${yVals[p.value[1]]}: ${p.value[2].toLocaleString()}` },
-      grid: { left: 60, right: 8, top: 8, bottom: 36 },
-      xAxis: { type: "category", data: xVals, axisLabel: { color: palette.ink3, fontSize: 9, rotate: 35 }, axisTick: { show: false }, axisLine: { lineStyle: { color: palette.line2 } } },
-      yAxis: { type: "category", data: yVals, axisLabel: { color: palette.ink3, fontSize: 9 }, axisTick: { show: false }, axisLine: { lineStyle: { color: palette.line2 } } },
-      visualMap: { show: false, min: Math.min(...heatData.map(d => d[2])), max: Math.max(...heatData.map(d => d[2])), inRange: { color: [translucent(palette.accent, 0.1), palette.accent] } },
+      // containLabel ensures y-axis labels never clip; works for both compact and full
+      grid: { containLabel: true, left: "2%", right: "2%", top: compact ? 4 : 8, bottom: compact ? 4 : 8 },
+      xAxis: {
+        type: "category", data: xVals,
+        axisLabel: hmXLabel,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: palette.line2 } },
+      },
+      yAxis: {
+        type: "category", data: yVals,
+        axisLabel: hmYLabel,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: palette.line2 } },
+      },
+      visualMap: {
+        show: false,
+        min: Math.min(...heatData.map(d => d[2])),
+        max: Math.max(...heatData.map(d => d[2])),
+        inRange: { color: [translucent(palette.accent, 0.1), palette.accent] },
+      },
       series: [{ type: "heatmap", data: heatData, emphasis: { itemStyle: { shadowBlur: 10 } } }],
     };
   }
