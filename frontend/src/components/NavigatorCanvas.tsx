@@ -525,11 +525,11 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
         background:    palette.bg1,
         border:        `1px solid ${hovered ? palette.line2 : palette.line}`,
         borderRadius:  6,
-        padding:       "12px 14px",
+        padding:       "10px 12px",
         cursor:        "pointer",
         display:       "flex",
         flexDirection: "column",
-        gap:           6,
+        gap:           4,
         minWidth:      0,
         width:         "100%",
         textAlign:     "left",
@@ -600,7 +600,7 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
             kpi={kpi}
             rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
             loading={loading}
-            height={70}
+            height={60}
           />
         </div>
       )}
@@ -987,7 +987,7 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
   const handleClose    = useCallback(() => setExpandedKpi(null), []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32, padding: "8px 0" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "4px 0" }}>
 
       {/* ── AI Summary strip ── */}
       {hasSummary && (
@@ -1032,37 +1032,26 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
       {persona.dashboard_sections.map((section) => (
         <section key={section.id}>
 
-          {/* Section header */}
+          {/* Section header — compact, no description to save vertical space */}
           <div style={{
-            display:       "flex",
-            alignItems:    "baseline",
-            gap:           12,
-            marginBottom:  14,
-            borderBottom:  `1px solid ${palette.line}`,
-            paddingBottom: 10,
+            display:      "flex",
+            alignItems:   "center",
+            gap:          8,
+            marginBottom: 8,
           }}>
             <span style={{
-              fontFamily:    CHART_FONT,
-              fontSize:      12,
+              fontFamily:    CHART_NUM_FONT,
+              fontSize:      10,
               fontWeight:    700,
-              color:         palette.ink2,
-              letterSpacing: "0.04em",
+              color:         palette.ink4,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
             }}>
               {section.title.replace(/_/g, " ")}
             </span>
-            {section.description && (
-              <span style={{
-                fontFamily: CHART_FONT,
-                fontSize:   12,
-                color:      palette.ink4,
-              }}>
-                {section.description}
-              </span>
-            )}
             <span style={{
               fontFamily: CHART_NUM_FONT,
-              fontSize:   12,
+              fontSize:   10,
               color:      palette.ink4,
               marginLeft: "auto",
             }}>
