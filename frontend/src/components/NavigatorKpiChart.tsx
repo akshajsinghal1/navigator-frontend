@@ -284,7 +284,15 @@ function buildOption(
   rows: Record<string, unknown>[],
   palette: Palette,
   period: Period = "now",
+  compact = false,
 ): object | null {
+  // Compact axis base — no labels, no ticks, no gridlines (for tile view)
+  const COMPACT_AXIS = {
+    axisLabel: { show: false },
+    axisTick:  { show: false },
+    axisLine:  { show: false },
+    splitLine: { show: false },
+  };
   const ctype = (kpi.chart?.type ?? "kpi_card").toLowerCase();
   if (ctype === "kpi_card" || ctype === "scorecard") return null;
   if (!rows.length) return null;
@@ -371,12 +379,17 @@ function buildOption(
   const yData = pairs.map((p) => p.y);
   const tt    = chartTooltip(palette);
 
-  const AXIS_BASE = {
+  // In compact mode use no-label axes; otherwise full axes with styling
+  const AXIS_BASE = compact ? COMPACT_AXIS : {
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" } },
   };
+  // In compact mode: no tooltip, no legend, tighter grid
+  const compactGrid = compact
+    ? { left: 2, right: 2, top: 2, bottom: 2 }
+    : null;
 
   // ── Detect confidence interval columns ──────────────────────────────────
   // Automatically finds upper/lower prediction interval columns in the rows.
@@ -416,9 +429,10 @@ function buildOption(
 
     return {
       backgroundColor: "transparent",
-      animationDuration: 600,
-      tooltip: { ...tt, trigger: "axis" },
-      grid: { left: 46, right: 16, top: hasCI ? 16 : 12, bottom: 36 },
+      animationDuration: compact ? 0 : 600,
+      tooltip: compact ? { show: false } : { ...tt, trigger: "axis" },
+      grid: compactGrid ?? { left: 46, right: 16, top: hasCI ? 16 : 12, bottom: 36 },
+      legend: compact ? { show: false } : undefined,
       xAxis: {
         ...AXIS_BASE,
         type: "category",
@@ -505,9 +519,9 @@ function buildOption(
 
     return {
       backgroundColor: "transparent",
-      animationDuration: 600,
-      tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { left: 46, right: 16, top: 12, bottom: 36 },
+      animationDuration: compact ? 0 : 600,
+      tooltip: compact ? { show: false } : { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
+      grid: compactGrid ?? { left: 46, right: 16, top: 12, bottom: 36 },
       xAxis: {
         ...AXIS_BASE,
         type: "category",
@@ -566,9 +580,9 @@ function buildOption(
         : pairs;
     return {
       backgroundColor: "transparent",
-      animationDuration: 600,
-      tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { left: 110, right: 16, top: 8, bottom: 8 },
+      animationDuration: compact ? 0 : 600,
+      tooltip: compact ? { show: false } : { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
+      grid: compactGrid ?? { left: 110, right: 16, top: 8, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value" },
       yAxis: {
         ...AXIS_BASE,
@@ -718,24 +732,25 @@ function buildOption(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
-  kpi:       NavigatorKPI;
-  rows:      Record<string, unknown>[];  // pre-fetched by NavigatorKpiCard (all historical rows)
-  loading:   boolean;
-  period?:   Period;   // current period selection — drives projection overlay
-  height?:   number;
-  maxPoints?: number;  // limit data points for compact/tile view (avoids noisy charts)
+  kpi:        NavigatorKPI;
+  rows:       Record<string, unknown>[];
+  loading:    boolean;
+  period?:    Period;
+  height?:    number;
+  maxPoints?: number;   // sample rows for compact view (avoids noisy charts)
+  compact?:   boolean;  // hide all axes/labels — shape only (for tile view)
 }
 
-export function NavigatorKpiChart({ kpi, rows, loading, period = "now", height = 240, maxPoints }: Props) {
-  // For tile/compact view: sample rows to avoid overwhelming a small chart
+export function NavigatorKpiChart({ kpi, rows, loading, period = "now", height = 240, maxPoints, compact = false }: Props) {
+  // For compact view: sample rows evenly to keep chart shape readable
   const displayRows = maxPoints && rows.length > maxPoints
     ? rows.filter((_, i) => i % Math.ceil(rows.length / maxPoints) === 0).slice(0, maxPoints)
     : rows;
   const { palette } = useChartTheme();
 
   const option = useMemo(
-    () => buildOption(kpi, displayRows, palette, period),
-    [kpi, displayRows, palette, period],
+    () => buildOption(kpi, displayRows, palette, period, compact),
+    [kpi, displayRows, palette, period, compact],
   );
 
   if (loading) {

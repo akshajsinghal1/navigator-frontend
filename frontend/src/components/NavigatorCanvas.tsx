@@ -597,6 +597,7 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
             loading={loading}
             height={60}
             maxPoints={20}
+            compact
           />
         </div>
       )}
