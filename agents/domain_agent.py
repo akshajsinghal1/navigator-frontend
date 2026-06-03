@@ -86,10 +86,17 @@ Many dashboards have both a KPI view (1 row — the current number) and a Trend 
 (many rows — time series for charting). Use both:
   1. Fetch the KPI/aggregate view → compute l1_value from it.
   2. Look in relevant_views for a view whose name contains "Trend", "History",
-     "Over Time", "by Month", "by Week". If found, fetch it and use THOSE rows
-     as raw_data — they give the chart its shape.
+     "Over Time", "by Month", "by Week", "Forecast". If found, fetch it and use
+     THOSE rows as raw_data — they give the chart its shape.
   3. If no trend view exists, use the rows you have (even 1 row is fine for kpi_card).
 raw_data should always come from the richest available view — prefer time-series.
+
+CONFIDENCE / PREDICTION INTERVALS:
+If a view has columns like Upper Confidence, Lower Confidence, Upper Gap Confidence,
+Lower Gap Confidence, p10, p90 — these are prediction bands that the frontend will
+render automatically as whisker bars on line charts.
+ALWAYS prefer the TREND view (with time-series + confidence columns) over a
+KPI snapshot view for any predictive or forecast KPI — it shows the full story.
 
 Computing from sample rows — your primary tool
 ──────────────────────────────────────────────

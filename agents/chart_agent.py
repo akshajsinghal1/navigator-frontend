@@ -169,6 +169,21 @@ Explanation principles:
                   (raw_data_sample, trend_direction, trend_pct, trend_description, anomaly).
                   If none of these are present, set to null — do NOT fabricate insights.
 
+CONFIDENCE INTERVALS — automatic, no extra work needed:
+The frontend automatically detects and renders confidence/prediction bands
+when the fetched view data contains upper/lower bound columns. This works
+for any column named: upper, lower, confidence, prediction, interval, bound, p10, p90.
+
+When you pick a chart type for a PREDICTIVE or FORECAST KPI:
+  → Pick line_chart or area_chart (NOT kpi_card) so the chart renders
+  → The whisker bands appear automatically if the data has upper/lower columns
+  → A kpi_card would suppress the chart and hide the confidence bands entirely
+
+Example: "30-Day Staffing Shortage Forecast" with columns
+  Predicted Staffing Gap, Upper Gap Confidence, Lower Gap Confidence
+  → pick line_chart → frontend renders the line + shaded confidence band
+  → do NOT pick kpi_card just because it's a single metric
+
 Axis and aggregation instructions:
 - x_axis_type: set to "temporal" if x-axis is a date/time field, "categorical" for
   dimension fields (Region, Category, etc.), "numeric" for measure-on-measure charts
