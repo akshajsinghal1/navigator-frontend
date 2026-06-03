@@ -82,43 +82,9 @@ _DOMAIN_VOCAB: list[tuple[str, list[str]]] = [
 _GEO_KEYWORDS  = {"state", "country", "city", "territory", "region", "lat", "lon", "zip", "postal"}
 _TIME_KEYWORDS = {"date", "time", "year", "month", "quarter", "week", "day", "period"}
 
-# ── Operational dimension keywords ────────────────────────────────────────────
-# These fields should ALWAYS be considered as breakdown dimensions.
-# If they exist in a workbook, at least one KPI per persona should use them.
-_OPERATIONAL_DIM_GROUPS: dict[str, list[str]] = {
-    "facility":    ["facility", "site", "location", "building", "campus", "branch"],
-    "department":  ["department", "dept", "unit", "ward", "floor", "division",
-                    "team", "cost center", "service line"],
-    "shift":       ["shift", "shift_name", "schedule", "slot"],
-    "region":      ["region", "zone", "territory", "district", "area", "geography",
-                    "market", "sector"],
-    "role":        ["role", "position", "job_title", "staff_type", "employee_type",
-                    "classification", "rn", "cna", "therapist"],
-    "status":      ["status", "state", "stage", "flag", "category", "type",
-                    "priority", "risk"],
-}
-
-# ── Financial field keywords ──────────────────────────────────────────────────
-# Fields containing these words are FINANCIALLY MATERIAL —
-# must surface in at least one KPI, especially for CFO/executive personas.
-_FINANCIAL_KEYWORDS = [
-    "cost", "labor_cost", "labour", "revenue", "income", "budget",
-    "spend", "expense", "wage", "salary", "pay", "compensation",
-    "agency", "contract", "overtime", "premium", "billing", "charge",
-    "reimbursement", "copay", "premium", "profit", "loss", "margin",
-]
-
-# ── View classification keywords ─────────────────────────────────────────────
-_VIEW_TYPE_HINTS: dict[str, list[str]] = {
-    "kpi_tile":      ["kpi", "tile", "card", "snapshot", "current", "today",
-                      "now", "summary", "overview"],
-    "trend_chart":   ["trend", "over time", "history", "timeline", "monthly",
-                      "weekly", "daily", "forecast", "projection"],
-    "breakdown":     ["by ", "breakdown", "distribution", "comparison",
-                      "department", "facility", "region", "status", "category"],
-    "heatmap":       ["heatmap", "heat map", "matrix", "grid", "calendar"],
-    "risk_matrix":   ["risk", "matrix", "scatter", "bubble", "quadrant"],
-}
+# NOTE: No domain-specific keyword lists here.
+# EDA is fully generic — it presents raw field structure.
+# Agents discover what's valuable by running pandas analysis on real data.
 
 
 def _lower(s: str) -> str:
@@ -141,56 +107,25 @@ def _is_time_field(name: str, data_type: str | None) -> bool:
     return "date" in dt or "datetime" in dt or any(kw in fl for kw in _TIME_KEYWORDS)
 
 
-def _detect_operational_dimensions(all_fields: list[dict]) -> dict[str, list[str]]:
+def _get_all_dimension_fields(all_fields: list[dict]) -> list[dict]:
     """
-    Find fields that should be used as breakdown dimensions.
-    Groups them by type: facility, department, shift, region, role, status.
-    These should ALWAYS appear in at least one KPI per persona.
+    Return all DIMENSION fields — these are potential breakdown candidates.
+    The orchestrator/domain agents decide which are worth using by checking
+    actual data cardinality with run_analysis (e.g. df['Field'].nunique()).
+    No keyword filtering — generic for any workbook.
     """
-    result: dict[str, list[str]] = {}
-    for group, keywords in _OPERATIONAL_DIM_GROUPS.items():
-        found = [
-            f["name"] for f in all_fields
-            if f.get("role") == "DIMENSION" and
-               any(kw in _lower(f["name"]) for kw in keywords)
-        ]
-        if found:
-            result[group] = found
-    return result
+    return [f for f in all_fields if f.get("role") == "DIMENSION"]
 
 
-def _detect_financial_fields(all_fields: list[dict]) -> list[str]:
+def _get_all_measure_fields(all_fields: list[dict]) -> list[dict]:
     """
-    Find fields that represent money/cost/revenue — must surface in at least
-    one KPI, especially for finance/executive personas.
+    Return all MEASURE and CalculatedField entries — these are potential KPI values.
+    No keyword filtering — agents discover what's important from real data.
     """
     return [
-        f["name"] for f in all_fields
-        if any(kw in _lower(f["name"]) for kw in _FINANCIAL_KEYWORDS)
-        and f.get("role") in ("MEASURE", "DIMENSION") or f.get("type") == "CalculatedField"
+        f for f in all_fields
+        if f.get("role") == "MEASURE" or f.get("type") == "CalculatedField"
     ]
-
-
-def _classify_views(sheets: list[str]) -> dict[str, list[str]]:
-    """
-    Classify Tableau views by purpose from their names.
-    Helps orchestrator pick the right view for each KPI type.
-    """
-    classified: dict[str, list[str]] = {k: [] for k in _VIEW_TYPE_HINTS}
-    classified["other"] = []
-
-    for sheet in sheets:
-        sl = _lower(sheet)
-        assigned = False
-        for view_type, hints in _VIEW_TYPE_HINTS.items():
-            if any(h in sl for h in hints):
-                classified[view_type].append(sheet)
-                assigned = True
-                break
-        if not assigned:
-            classified["other"].append(sheet)
-
-    return {k: v for k, v in classified.items() if v}  # drop empty
 
 
 def _score_kpi_likelihood(field: dict) -> int:
@@ -350,11 +285,11 @@ def run_eda(filtered_inventory: dict[str, Any]) -> dict[str, Any]:
     # ── L2 summary ───────────────────────────────────────────────────────────
     l2_eligible = [p for p in parameters if p["l2_eligible"]]
 
-    # ── Enhanced structural discovery ────────────────────────────────────────
-    # These are passed to orchestrator so agents know WHAT exists before designing KPIs
-    operational_dimensions = _detect_operational_dimensions(all_fields)
-    financial_fields        = _detect_financial_fields(all_fields)
-    view_classification     = _classify_views(sheets)
+    # ── Raw structural inventory (generic, no domain assumptions) ────────────
+    # Agents use run_analysis to discover what's actually important in the data.
+    # We present ALL fields and let real data tell the story.
+    all_dim_fields     = _get_all_dimension_fields(all_fields)
+    all_measure_fields = _get_all_measure_fields(all_fields)
 
     return {
         "summary": {
@@ -380,14 +315,15 @@ def run_eda(filtered_inventory: dict[str, Any]) -> dict[str, Any]:
         "parameters": parameters,
         "l2_eligible_params": l2_eligible,
         "domain_clusters": domain_clusters,
-        "dimensions": [f["name"] for f in dimensions],
-        "time_fields": time_fields,
+        # Full dimension list — agents check cardinality with run_analysis
+        "all_dimensions":  [{"name": f["name"], "dataType": f["dataType"]}
+                            for f in all_dim_fields],
+        # Full measure list — agents verify values with run_analysis
+        "all_measures":    [{"name": f["name"], "type": f["type"], "formula": f.get("formula")}
+                            for f in all_measure_fields],
+        "time_fields":      time_fields,
         "geographic_fields": geo_fields,
-        "sheets": sheets,
-        # ── Enhanced structural maps ─────────────────────────────────────────
-        "operational_dimensions": operational_dimensions,
-        "financial_fields":       financial_fields,
-        "view_classification":    view_classification,
+        "sheets":           sheets,
     }
 
 
@@ -438,37 +374,22 @@ def format_eda_for_agent(eda: dict[str, Any]) -> str:
             f"sheets → {sheets_str}"
         )
 
-    # Dimensions for breakdowns
-    if eda["dimensions"]:
-        lines.append(f"\nDIMENSIONS (available for chart breakdowns): {', '.join(eda['dimensions'][:15])}")
+    # All dimensions — agents check cardinality with run_analysis to find breakdowns
+    all_dims = eda.get("all_dimensions", [])
+    if all_dims:
+        dim_names = [d["name"] for d in all_dims[:20]]
+        lines.append(f"\nALL DIMENSIONS ({len(all_dims)} total — check cardinality with run_analysis):")
+        lines.append(f"  {', '.join(dim_names)}")
+        lines.append("  → Use: df['Field'].nunique() to find low-cardinality breakdowns")
+        lines.append("  → Dimensions with 2-20 distinct values = strong breakdown candidates")
 
-    # ── Enhanced structural maps ──────────────────────────────────────────────
-
-    op_dims = eda.get("operational_dimensions", {})
-    if op_dims:
-        lines.append("\nOPERATIONAL DIMENSIONS — always use as breakdown candidates:")
-        lines.append("  At least ONE KPI per persona MUST use these as x-axis or breakdown_by.")
-        for dim_type, fields in op_dims.items():
-            lines.append(f"  {dim_type.upper()}: {', '.join(fields[:5])}")
-
-    fin_fields = eda.get("financial_fields", [])
-    if fin_fields:
-        lines.append("\nFINANCIAL FIELDS — must surface in at least one persona (especially CFO/executive):")
-        lines.append(f"  {', '.join(fin_fields[:10])}")
-
-    view_class = eda.get("view_classification", {})
-    if view_class:
-        lines.append("\nVIEW CLASSIFICATION — use the right view type for each KPI design:")
-        if view_class.get("kpi_tile"):
-            lines.append(f"  KPI tiles (single values):  {', '.join(view_class['kpi_tile'][:5])}")
-        if view_class.get("trend_chart"):
-            lines.append(f"  Trend charts (time-series): {', '.join(view_class['trend_chart'][:5])}")
-        if view_class.get("breakdown"):
-            lines.append(f"  Breakdown views (use for 'by X' KPIs): {', '.join(view_class['breakdown'][:5])}")
-        if view_class.get("heatmap"):
-            lines.append(f"  Heatmaps (dept × time grids): {', '.join(view_class['heatmap'][:5])}")
-        if view_class.get("risk_matrix"):
-            lines.append(f"  Risk matrices (scatter/rank): {', '.join(view_class['risk_matrix'][:5])}")
+    # All measures — agents verify values with run_analysis
+    all_meas = eda.get("all_measures", [])
+    if all_meas:
+        meas_names = [m["name"] for m in all_meas[:20]]
+        lines.append(f"\nALL MEASURES ({len(all_meas)} total — verify with run_analysis):")
+        lines.append(f"  {', '.join(meas_names)}")
+        lines.append("  → Use: df['Field'].describe() to understand scale and distribution")
 
     lines.append("\n=== END PRE-ANALYSIS ===")
     return "\n".join(lines)
