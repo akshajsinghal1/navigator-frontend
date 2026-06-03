@@ -434,9 +434,9 @@ function buildOption(
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
     splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // Compact grids — containLabel ensures short x labels never clip
+  // Compact grids — containLabel auto-fits labels; explicit sides prevent over-shrinking
   const compactGrid = compact
-    ? { containLabel: true, top: 6 }
+    ? { containLabel: true, left: "8%", right: "4%", top: 6, bottom: 4 }
     : null;
   // Horizontal bar compact: containLabel for y-axis (category names still shown)
   const compactHBarGrid = compact
@@ -492,7 +492,7 @@ function buildOption(
           ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, interval: allX.length > 16 ? Math.floor(allX.length / 8) : 0 },
       },
-      yAxis: { ...AXIS_BASE, type: "value" },
+      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
       series: [
         // Confidence band — lower bound (invisible fill base)
         ...(hasCI ? [{
@@ -579,7 +579,7 @@ function buildOption(
           ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 35 : 0, interval: 0 },
       },
-      yAxis: { ...AXIS_BASE, type: "value" },
+      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
       series: [
         {
           name: kpi.name,
@@ -734,7 +734,7 @@ function buildOption(
         data: xData,
         axisLabel: { ...AXIS_BASE.axisLabel, rotate: xData.length > 6 ? 30 : 0 },
       },
-      yAxis: { ...AXIS_BASE, type: "value" },
+      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
       series: [{
         name: kpi.name,
         type: "bar",
