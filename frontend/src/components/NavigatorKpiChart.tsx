@@ -379,16 +379,27 @@ function buildOption(
   const yData = pairs.map((p) => p.y);
   const tt    = chartTooltip(palette);
 
-  // In compact mode use no-label axes; otherwise full axes with styling
-  const AXIS_BASE = compact ? COMPACT_AXIS : {
+  // Compact mode: mini axes with fewer labels — resembles original but scaled down
+  const AXIS_BASE = compact ? {
+    axisLine:  { lineStyle: { color: palette.line2 } },
+    axisTick:  { show: false },
+    axisLabel: {
+      color: palette.ink4,
+      fontFamily: CHART_NUM_FONT,
+      fontSize: 9,
+      interval: "auto" as const,   // ECharts will auto-skip overlapping labels
+      hideOverlap: true,
+    },
+    splitLine: { lineStyle: { color: palette.line, type: "dashed" as const, opacity: 0.5 } },
+  } : {
     axisLine:  { lineStyle: { color: palette.line2 } },
     axisTick:  { show: false },
     axisLabel: { color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10 },
-    splitLine: { lineStyle: { color: palette.line, type: "dashed" } },
+    splitLine: { lineStyle: { color: palette.line, type: "dashed" as const } },
   };
-  // In compact mode: no tooltip, no legend, tighter grid
+  // Compact: tighter grid with room for small labels
   const compactGrid = compact
-    ? { left: 2, right: 2, top: 2, bottom: 2 }
+    ? { left: 36, right: 8, top: 6, bottom: 24 }
     : null;
 
   // ── Detect confidence interval columns ──────────────────────────────────
@@ -429,10 +440,9 @@ function buildOption(
 
     return {
       backgroundColor: "transparent",
-      animationDuration: compact ? 0 : 600,
-      tooltip: compact ? { show: false } : { ...tt, trigger: "axis" },
+      animationDuration: compact ? 200 : 600,
+      tooltip: { ...tt, trigger: "axis" },
       grid: compactGrid ?? { left: 46, right: 16, top: hasCI ? 16 : 12, bottom: 36 },
-      legend: compact ? { show: false } : undefined,
       xAxis: {
         ...AXIS_BASE,
         type: "category",
@@ -519,8 +529,8 @@ function buildOption(
 
     return {
       backgroundColor: "transparent",
-      animationDuration: compact ? 0 : 600,
-      tooltip: compact ? { show: false } : { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
+      animationDuration: compact ? 200 : 600,
+      tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
       grid: compactGrid ?? { left: 46, right: 16, top: 12, bottom: 36 },
       xAxis: {
         ...AXIS_BASE,
@@ -580,8 +590,8 @@ function buildOption(
         : pairs;
     return {
       backgroundColor: "transparent",
-      animationDuration: compact ? 0 : 600,
-      tooltip: compact ? { show: false } : { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
+      animationDuration: compact ? 200 : 600,
+      tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
       grid: compactGrid ?? { left: 110, right: 16, top: 8, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value" },
       yAxis: {

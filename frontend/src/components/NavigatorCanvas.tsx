@@ -595,7 +595,7 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
             kpi={kpi}
             rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
             loading={loading}
-            height={60}
+            height={110}
             maxPoints={20}
             compact
           />
