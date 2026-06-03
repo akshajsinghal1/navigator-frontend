@@ -27,13 +27,106 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from schemas.config import IntelligenceConfig
+import re
+
+from schemas.config import IntelligenceConfig, KPI, L1Data, ChartSpec, Explanation, DashboardSection
 from tableau.connector import StubConnector, TableauConnector
 from tableau.semantic_filter import filter_inventory
 from tableau.vds       import VdsClient
 from pipeline.manifest import build_manifest, WorkbookManifest
 
 log = logging.getLogger(__name__)
+
+
+def _inject_supplementary_kpis(
+    config: IntelligenceConfig,
+    supplementary: list[dict],
+) -> IntelligenceConfig:
+    """
+    Add QA agent's supplementary KPIs into the appropriate persona sections.
+    Each supplementary KPI specifies a target_persona role.
+    """
+    if not supplementary:
+        return config
+
+    for kpi_raw in supplementary:
+        target_role = kpi_raw.get("target_persona", "")
+        if not target_role:
+            continue
+
+        # Build a KPI object from the QA result
+        kpi_id = kpi_raw.get("id") or re.sub(r"[^a-z0-9]+", "_", kpi_raw.get("name", "qa_kpi").lower()).strip("_")
+        try:
+            l1 = L1Data(
+                value      = kpi_raw.get("l1_value"),
+                unit       = kpi_raw.get("l1_unit", ""),
+                format     = "number",
+                view_name  = kpi_raw.get("l1_view_name", ""),
+                field_name = kpi_raw.get("l1_field_name", ""),
+            )
+            chart = ChartSpec(
+                type         = kpi_raw.get("chart_type", "kpi_card"),
+                x_axis       = kpi_raw.get("x_axis"),
+                x_axis_type  = kpi_raw.get("x_axis_type"),
+                aggregation  = kpi_raw.get("aggregation", "sum"),
+            )
+            explanation = Explanation(
+                what           = kpi_raw.get("description", ""),
+                why_it_matters = kpi_raw.get("gap_filled", "QA-identified gap"),
+            )
+            kpi_obj = KPI(
+                id          = kpi_id,
+                name        = kpi_raw.get("name", kpi_id),
+                description = kpi_raw.get("description", ""),
+                layer       = "L1",
+                l1          = l1,
+                chart       = chart,
+                explanation = explanation,
+            )
+        except Exception as exc:
+            log.warning("QA KPI build failed for %r: %s", kpi_raw.get("name"), exc)
+            continue
+
+        # Find the target persona and inject into a "QA Additions" section
+        injected = False
+        for pv in config.personas:
+            if target_role.lower() in pv.persona.role.lower() or pv.persona.role.lower() in target_role.lower():
+                # Add to existing "QA Additions" section or create one
+                qa_section = next(
+                    (s for s in pv.dashboard_sections if s.id == "qa_additions"),
+                    None
+                )
+                if qa_section is None:
+                    qa_section = DashboardSection(
+                        id          = "qa_additions",
+                        title       = "Additional Insights",
+                        description = "KPIs discovered by QA analysis",
+                        kpis        = [],
+                    )
+                    pv.dashboard_sections.append(qa_section)
+                qa_section.kpis.append(kpi_obj)
+                log.info("QA: added KPI '%s' to persona '%s'", kpi_obj.name, pv.persona.role)
+                injected = True
+                break
+
+        if not injected:
+            # Assign to the first persona if target not found
+            if config.personas:
+                pv = config.personas[0]
+                qa_section = next(
+                    (s for s in pv.dashboard_sections if s.id == "qa_additions"),
+                    None
+                )
+                if qa_section is None:
+                    qa_section = DashboardSection(
+                        id="qa_additions", title="Additional Insights",
+                        description="QA-identified gaps", kpis=[],
+                    )
+                    pv.dashboard_sections.append(qa_section)
+                qa_section.kpis.append(kpi_obj)
+                log.warning("QA: no persona matched '%s', assigned to '%s'", target_role, pv.persona.role)
+
+    return config
 
 
 class PipelineRunner:
@@ -183,6 +276,33 @@ class PipelineRunner:
 
             log.info("Running orchestrator agent")
             config = orchestrator.run_pipeline(filtered, eda=eda)
+
+            # ── step 7: QA agent — review config, find gaps, add missing KPIs ──
+            try:
+                from agents.qa_agent import QAAgent
+                from agents.orchestrator import _infer_persona_level
+
+                log.info("Running QA agent to review config and find gaps")
+                qa = QAAgent(connector=conn, workbook_luid=workbook_luid)
+                qa_result = qa.review(
+                    config          = config,
+                    eda             = eda or {},
+                    available_views = available_views,
+                )
+
+                supplementary = qa_result.get("supplementary_kpis", [])
+                gaps          = qa_result.get("gaps_found", [])
+
+                if gaps:
+                    log.info("QA agent found %d gaps: %s", len(gaps), gaps[:3])
+
+                if supplementary:
+                    log.info("QA agent proposing %d supplementary KPIs", len(supplementary))
+                    config = _inject_supplementary_kpis(config, supplementary)
+
+            except Exception as exc:
+                # QA agent failure should not abort the pipeline
+                log.warning("QA agent failed (non-fatal): %s", exc)
 
         elapsed = time.time() - start
         log.info("=== Pipeline complete in %.1fs ===", elapsed)
