@@ -370,7 +370,18 @@ Rules
 - KPI names should sound like business questions or constructs, not Tableau pills.
 - Forbidden: KPI names that are 1:1 with existing view names (you can SEE which
   view names exist via available_api_views — make your KPI names different).
-- One objective sentence. Design as many personas, domains, and KPIs as the workbook genuinely supports — don't cap artificially. Every KPI must be distinct and data-backed.
+- One objective sentence. Design as many personas, domains, and KPIs as the workbook genuinely
+  supports — NEVER cap artificially. Every KPI must be distinct and data-backed.
+
+- SCALE REQUIREMENT — this is mandatory, not a suggestion:
+  Every view in `available_api_views` must contribute to at least one KPI. With N views
+  you must design approximately N/2 KPIs across multiple domains and personas. If this
+  workbook has 20 views, expect 10+ KPIs. If it has 33 views, expect 15+ KPIs. If you
+  finish and have used fewer than half the available views, you have not finished.
+  Before calling generate_chart_spec, scan your KPI list against available_api_views.
+  Any view not yet used must become at least one additional KPI — or be explicitly
+  excluded with a one-line reason (e.g. "ADMIN_METADATA — no business metric inside").
+
 - DEDUPLICATION — before emitting, scan your KPI list for near-duplicate metrics. Two KPIs
   measuring the same underlying fact are near-duplicates even if named differently:
   e.g. "Predicted Staffing Shortage" (-0.7) and "Predicted Shortage Absolute" (0.7) are the
@@ -379,21 +390,34 @@ Rules
   Sum", "Avg Bed Occupancy" + "Mean Occupancy Rate", "Count of Referrals" + "Referral Volume".
   If you find a near-duplicate pair, drop the weaker one entirely. Never surface the same
   business fact twice with slightly different math or naming.
+
 - Every KPI must appear in EXACTLY ONE persona's dashboard. No kpi_id may be listed
   in multiple personas' dashboard_sections. The assembler enforces this — duplicates
   are silently dropped, so if you repeat a kpi_id across personas one persona will
   have an empty section. Assign each KPI to the persona that most needs it.
 - Complete all analysis before emitting. Quality over speed.
 
-Tool call strategy — follow this EXACTLY (3 turns maximum)
-────────────────────────────────────────────────────────────
-Turn 1: Understand workbook → design domains + KPIs + personas
-        → call analyze_domain for ALL domains simultaneously (one turn)
-Turn 2: Domain results in → call generate_chart_spec for ALL KPIs simultaneously (one turn)
-Turn 3: Chart specs in → call emit_intelligence_config ONCE
+Tool call strategy — maximize coverage, not minimize turns
+──────────────────────────────────────────────────────────
+You MUST cover every available view. Use as many analyze_domain turns as needed.
 
-Do NOT split these across extra turns. All analyze_domain calls go in turn 1.
-All generate_chart_spec calls go in turn 2. Emit in turn 3. Done.
+Phase A — Domain analysis (repeat until ALL views are covered):
+  Call analyze_domain in batches. Group related views into one domain call.
+  A domain can cover 3-6 views at once. With 10+ views, you will need multiple
+  analyze_domain turns — that is expected and correct. Each turn can call
+  multiple analyze_domain tools simultaneously.
+
+  STOP Phase A only when every view in available_api_views appears in at
+  least one domain's relevant_views list.
+
+Phase B — Chart specs (one turn):
+  Call generate_chart_spec for ALL KPIs from all domains simultaneously.
+
+Phase C — Emit (one turn):
+  Call emit_intelligence_config ONCE.
+
+There is NO turn limit. Do not rush. Do not compress domains to fit in fewer turns.
+A workbook with 30 views should produce 3-5 Phase-A turns, not 1.
 """
 
 
@@ -419,7 +443,7 @@ class OrchestratorAgent(BaseAgent):
             model          = _MODEL,
             tools          = ORCHESTRATOR_TOOLS,
             system_prompt  = _SYSTEM_PROMPT,
-            max_iterations = 12,  # 3 content turns + summary agents + buffer
+            max_iterations = 30,  # multi-phase: A(domain batches) + B(charts) + C(emit)
             max_tokens     = 8192,
         )
         self._connector       = connector
@@ -480,22 +504,35 @@ class OrchestratorAgent(BaseAgent):
                 if f.datasource_luid:  entry["datasource"] = f.datasource_name
                 reachable_fields_summary.append(entry)
 
+        n_views  = len(self._available_views) if self._available_views else 0
+        n_fields = len(reachable_fields_summary)
+        min_kpis = max(6, n_views // 2)  # at least half the views should produce KPIs
+
         user_msg = json.dumps({
             "workbook_inventory":  filtered_inventory,
             "eda_pre_analysis":    eda_text or None,
             "available_api_views": self._available_views or None,
             "reachable_fields":    reachable_fields_summary or None,
+            "scale_requirements": {
+                "total_views":   n_views,
+                "total_fields":  n_fields,
+                "minimum_kpis":  min_kpis,
+                "note": (
+                    f"This workbook has {n_views} views and {n_fields} reachable fields. "
+                    f"You MUST design at least {min_kpis} KPIs. "
+                    f"Every view in available_api_views must be used in at least one KPI "
+                    f"unless it is purely administrative (no business metric). "
+                    f"Use multiple analyze_domain turns to cover all views — "
+                    f"do NOT compress all views into 2-3 domains."
+                ),
+            },
             "task": (
-                "Analyze this Tableau workbook (inventory + pre-analysis + reachable fields). "
-                "Identify the single business objective, as many distinct personas and business domains "
-                "as the workbook genuinely supports — do NOT cap at 2-4, let the data decide. "
-                "CRITICAL — when picking l1_field_name, l1_view_name, x_axis, y_axis, breakdown_by, etc., "
-                "you MUST use the EXACT 'name' values from the 'reachable_fields' list. "
-                "These are the only names that will exist in the actual data we fetch. "
-                "Do NOT invent field names or use field names from the inventory that are not in 'reachable_fields'. "
-                "When calling analyze_domain, only pass view names from 'available_api_views'. "
-                "Then use the tools to fetch KPI data and generate chart specs. "
-                "Finally, emit the complete intelligence config."
+                f"Analyze this Tableau workbook ({n_views} views, {n_fields} fields). "
+                "Identify the single business objective and design COMPREHENSIVE intelligence: "
+                f"aim for {min_kpis}+ KPIs across 4-8 personas — NOT 3 personas and 12 KPIs. "
+                "CRITICAL — use EXACT 'name' values from 'reachable_fields' for ALL field names. "
+                "Call analyze_domain in multiple batches (Phase A) until every view is covered. "
+                "Then generate_chart_spec for all KPIs (Phase B). Then emit (Phase C)."
             ),
         }, indent=2, default=_json_default)
 
