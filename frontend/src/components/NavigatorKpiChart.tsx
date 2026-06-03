@@ -904,10 +904,11 @@ function buildOption(
       rotate:      xVals.length > 4 ? 35 : 0,
       hideOverlap: true,
     };
+    // containLabel:true handles the space — no fixed width needed, no truncation
     const hmYLabel = {
-      color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 9,
-      overflow: "truncate" as const,
-      width: compact ? 60 : 100,
+      color:      compact ? palette.ink4 : palette.ink3,
+      fontFamily: CHART_NUM_FONT,
+      fontSize:   compact ? 8 : 9,
     };
 
     return {
