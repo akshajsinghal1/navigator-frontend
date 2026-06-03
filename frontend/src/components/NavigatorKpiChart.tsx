@@ -285,6 +285,7 @@ function buildOption(
   palette: Palette,
   period: Period = "now",
   compact = false,
+  maxPoints?: number,
 ): object | null {
   // Compact axis base — no labels, no ticks, no gridlines (for tile view)
   const COMPACT_AXIS = {
@@ -360,8 +361,16 @@ function buildOption(
     }
   }
 
-  const pairs = groupBy(rows, xCol, yCol, agg, xAxisType, sortOrder);
+  let pairs = groupBy(rows, xCol, yCol, agg, xAxisType, sortOrder);
   if (!pairs.length) return null;
+
+  // Apply maxPoints AFTER aggregation so counts/sums are correct
+  // For temporal: keep last N (most recent); for categorical: keep as-is (already sorted)
+  if (maxPoints && pairs.length > maxPoints) {
+    pairs = xAxisType === "temporal"
+      ? pairs.slice(-maxPoints)           // last N periods
+      : pairs.slice(0, maxPoints);        // top N categories
+  }
 
   // Build projected future points when a period is selected and projection defined
   const projPoints: ProjectedPoint[] = (period !== "now" && kpi.l2_projection)
@@ -761,15 +770,14 @@ interface Props {
 }
 
 export function NavigatorKpiChart({ kpi, rows, loading, period = "now", height = 240, maxPoints, compact = false }: Props) {
-  // For compact view: sample rows evenly to keep chart shape readable
-  const displayRows = maxPoints && rows.length > maxPoints
-    ? rows.filter((_, i) => i % Math.ceil(rows.length / maxPoints) === 0).slice(0, maxPoints)
-    : rows;
+  // Use ALL rows for groupBy aggregation — sampling happens on aggregated pairs
+  // inside buildOption to preserve correct counts (not individual row values)
+  const displayRows = rows;
   const { palette } = useChartTheme();
 
   const option = useMemo(
-    () => buildOption(kpi, displayRows, palette, period, compact),
-    [kpi, displayRows, palette, period, compact],
+    () => buildOption(kpi, displayRows, palette, period, compact, maxPoints),
+    [kpi, displayRows, palette, period, compact, maxPoints],
   );
 
   if (loading) {
