@@ -431,6 +431,7 @@ class DomainAgent(BaseAgent):
         try:
             # Safe eval: df + pd + common numeric builtins.
             # No I/O, no imports, no exec.
+            import numpy as np  # noqa: PLC0415
             _safe_builtins = {
                 "float": float, "int": int, "str": str, "bool": bool,
                 "len": len, "sum": sum, "round": round, "abs": abs,
@@ -442,7 +443,7 @@ class DomainAgent(BaseAgent):
             }
             result = eval(  # noqa: S307
                 expression,
-                {"__builtins__": _safe_builtins, "pd": pd},
+                {"__builtins__": _safe_builtins, "pd": pd, "np": np},
                 {"df": df},
             )
 

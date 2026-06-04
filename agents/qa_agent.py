@@ -289,6 +289,7 @@ class QAAgent(BaseAgent):
 
         df = pd.DataFrame(rows)  # noqa: F841
         try:
+            import numpy as np  # noqa: PLC0415
             _safe_builtins = {
                 "float": float, "int": int, "str": str, "bool": bool,
                 "len": len, "sum": sum, "round": round, "abs": abs,
@@ -298,7 +299,7 @@ class QAAgent(BaseAgent):
                 "True": True, "False": False, "None": None,
                 "isinstance": isinstance,
             }
-            result = eval(expression, {"__builtins__": _safe_builtins, "pd": pd}, {"df": df})  # noqa: S307
+            result = eval(expression, {"__builtins__": _safe_builtins, "pd": pd, "np": np}, {"df": df})  # noqa: S307
             result_str = result.to_string() if hasattr(result, "to_string") else str(result)
             if len(result_str) > 2000:
                 result_str = result_str[:2000] + "…"

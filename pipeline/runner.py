@@ -64,14 +64,32 @@ def _inject_supplementary_kpis(
                 view_name  = kpi_raw.get("l1_view_name", ""),
                 field_name = kpi_raw.get("l1_field_name", ""),
             )
-            # Normalize aggregation: "mean" is not a valid schema value → map to "avg"
+            # Normalize QA agent output to valid schema values
             _AGG_NORM = {"mean": "avg", "average": "avg", "total": "sum", "cnt": "count"}
             raw_agg = kpi_raw.get("aggregation", "sum") or "sum"
             agg = _AGG_NORM.get(raw_agg.lower(), raw_agg)
+
+            # chart_type: model sometimes emits shorthand like "line", "bar", "area"
+            _TYPE_NORM = {
+                "line": "line_chart", "bar": "bar_chart", "area": "area_chart",
+                "gauge": "gauge_chart", "heatmap": "heatmap_chart",
+                "scatter": "scatter_chart", "pie": "pie_chart",
+                "horizontal_bar": "horizontal_bar_chart",
+                "stacked_bar": "stacked_bar_chart",
+            }
+            raw_type = kpi_raw.get("chart_type", "kpi_card") or "kpi_card"
+            chart_type = _TYPE_NORM.get(raw_type.lower(), raw_type)
+
+            # x_axis_type: "date", "time", "datetime" → "temporal"
+            _AXIS_NORM = {"date": "temporal", "time": "temporal", "datetime": "temporal",
+                          "string": "categorical", "number": "numeric", "integer": "numeric"}
+            raw_axis_type = kpi_raw.get("x_axis_type")
+            axis_type = _AXIS_NORM.get((raw_axis_type or "").lower(), raw_axis_type)
+
             chart = ChartSpec(
-                type         = kpi_raw.get("chart_type", "kpi_card"),
+                type         = chart_type,
                 x_axis       = kpi_raw.get("x_axis"),
-                x_axis_type  = kpi_raw.get("x_axis_type"),
+                x_axis_type  = axis_type,
                 aggregation  = agg,
             )
             explanation = Explanation(
