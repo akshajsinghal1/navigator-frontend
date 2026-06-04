@@ -403,6 +403,8 @@ Phase A — Domain analysis (repeat until ALL views are covered):
   Group related views into domains. Call analyze_domain for multiple domains
   simultaneously within each turn. Keep going until every view in
   available_api_views has been assigned to a domain and analyzed.
+  Group by business topic — not by a fixed view count. A domain can have
+  1 view or 8 views depending on how related they are.
   Each domain call receives relevant_views and kpi_designs — the domain agent
   fetches data and computes ALL KPIs in that domain in a single call.
 
