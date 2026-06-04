@@ -233,7 +233,7 @@ Bad example (do not produce this):
 
 What you MUST do instead — design NEW intelligence from the same fields
 ──────────────────────────────────────────────────────────────────────
-The 20 reachable fields are your raw material. The workbook used them ONE way.
+The reachable fields are your raw material. The workbook used them ONE way.
 Use them in NEW ways to surface NEW insight. Several techniques:
 
 1. REFRAME the aggregation
@@ -347,17 +347,15 @@ job most depends on it and design a DIFFERENT angle for the other persona.
 "Total Sales" for a CFO becomes "Revenue Forecast Gap"; the Sales Manager gets
 "Quota Coverage Rate" instead — same underlying field, completely different KPI.
 
-Step 5 — CALL analyze_domain FOR ALL DOMAINS IN PARALLEL (single turn)
-Domain agent fetches the view, parses the columns, computes L1.
+Step 5 — CALL analyze_domain (Phase A — repeat until all views are covered)
 ONLY use view names from `available_api_views`.
-Pass relevant_fields using EXACT 'name' values from reachable_fields — these are
-the real CSV column names the domain agent will actually see in the data.
+Pass relevant_fields using EXACT 'name' values from reachable_fields.
+See "Tool call strategy" below for how to batch across multiple turns.
 
-Step 6 — CALL generate_chart_spec FOR ALL KPIs IN PARALLEL (single turn)
+Step 6 — CALL generate_chart_spec FOR ALL KPIs IN PARALLEL (Phase B — one turn)
 
-Step 7 — CALL emit_intelligence_config ONCE
-Summary cards are generated automatically after this call — you do not need to
-write them. Pass summary_cards as an empty array: "summary_cards": []
+Step 7 — CALL emit_intelligence_config ONCE (Phase C)
+Summary cards are generated automatically — pass summary_cards as [].
 
 Rules
 ─────
