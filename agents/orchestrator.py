@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -449,6 +450,12 @@ class OrchestratorAgent(BaseAgent):
         self._available_views = available_views or []
         self._manifest        = manifest   # exact field names + reachability info
 
+        # Semaphore: cap concurrent domain agents to avoid Gemini rate limits.
+        # With multi-phase Phase-A, the orchestrator may issue 8-10 analyze_domain
+        # calls per turn. Without a cap that's 8-10 simultaneous Gemini sessions,
+        # each making their own calls — quickly hits quota. 5 is enough parallelism.
+        self._domain_sem = threading.Semaphore(5)
+
         # Accumulated results from sub-agents
         self._domain_results: dict[str, dict] = {}   # domain_name -> result
         self._chart_specs:    dict[str, dict] = {}   # kpi_id -> spec
@@ -557,8 +564,9 @@ class OrchestratorAgent(BaseAgent):
 
         log.info("Spinning up domain agent for: %s (%d KPI designs)", domain_name, len(kpi_designs))
 
-        agent  = DomainAgent(self._connector, self._workbook_luid)
-        result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
+        with self._domain_sem:   # max 5 domain agents run concurrently
+            agent  = DomainAgent(self._connector, self._workbook_luid)
+            result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
 
         # Retry once if the agent finished without emitting (Gemini returned text
         # instead of calling the tool — happens when API is slow / overloaded)
