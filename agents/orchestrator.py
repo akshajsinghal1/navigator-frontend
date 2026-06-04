@@ -1051,6 +1051,8 @@ class OrchestratorAgent(BaseAgent):
         # appear in any later persona (prevents duplicates across dashboards).
         persona_views: list[PersonaView] = []
         claimed_kpi_ids: set[str] = set()
+        # Each entry: (role, focus_areas, objective, kpi_data) — for parallel summary run
+        _pending_summaries: list[tuple] = []
 
         for p_raw in emit.get("personas", []):
             persona = Persona(
@@ -1096,67 +1098,81 @@ class OrchestratorAgent(BaseAgent):
                 for kpi in sec.kpis:
                     claimed_kpi_ids.add(kpi.id)
 
-            # ── Generate data-grounded summary cards via SummaryAgent ────────────
-            # Collect all real KPI data for this persona (values, trends, anomalies,
-            # key insights) and pass to a dedicated agent that writes grounded cards.
+            # Collect KPI data — summary agents run in parallel after all personas assembled
             persona_kpi_data: list[dict] = []
             for sec in sections:
                 for kpi in sec.kpis:
-                    # Find domain agent findings for this KPI
                     domain_findings: dict = {}
                     for dr in self._domain_results.values():
                         for dk in dr.get("kpis", []):
                             if dk.get("id") == kpi.id:
                                 domain_findings = dk
                                 break
-
                     persona_kpi_data.append({
-                        "name":             kpi.name,
-                        "description":      kpi.description,
-                        "layer":            kpi.layer,
-                        "value":            kpi.l1.value if kpi.l1 else None,
-                        "unit":             kpi.l1.unit  if kpi.l1 else "",
-                        "trend_direction":  kpi.trend_direction,
-                        "trend_pct":        kpi.trend_pct,
+                        "name":              kpi.name,
+                        "description":       kpi.description,
+                        "layer":             kpi.layer,
+                        "value":             kpi.l1.value if kpi.l1 else None,
+                        "unit":              kpi.l1.unit  if kpi.l1 else "",
+                        "trend_direction":   kpi.trend_direction,
+                        "trend_pct":         kpi.trend_pct,
                         "trend_description": domain_findings.get("trend_description"),
-                        "anomaly":          domain_findings.get("anomaly"),
-                        "key_insight":      kpi.explanation.key_insight if kpi.explanation else None,
-                        "risk":             kpi.explanation.risk        if kpi.explanation else None,
+                        "anomaly":           domain_findings.get("anomaly"),
+                        "key_insight":       kpi.explanation.key_insight if kpi.explanation else None,
+                        "risk":              kpi.explanation.risk        if kpi.explanation else None,
                     })
 
-            log.info(
-                "Running SummaryAgent for persona '%s' with %d KPIs",
-                p_raw["role"], len(persona_kpi_data),
-            )
-            try:
-                raw_cards = SummaryAgent().generate(
-                    persona_role       = p_raw["role"],
-                    focus_areas        = p_raw.get("focus_areas", []),
-                    business_objective = emit.get("objective", ""),
-                    kpis               = persona_kpi_data,
-                )
-            except Exception as exc:
-                log.warning("SummaryAgent failed for '%s': %s — using empty cards", p_raw["role"], exc)
-                raw_cards = []
-
-            summary_cards = [
-                SummaryCard(
-                    title  = c.get("title", "Summary"),
-                    body   = c.get("body", ""),
-                    signal = c.get("signal", "neutral"),
-                )
-                for c in raw_cards
-            ]
+            # Stash kpi_data alongside the persona for the parallel summary pass
+            _pending_summaries.append((
+                p_raw["role"],
+                p_raw.get("focus_areas", []),
+                emit.get("objective", ""),
+                persona_kpi_data,
+            ))
 
             persona_views.append(PersonaView(
                 persona            = persona,
-                summary_cards      = summary_cards,
+                summary_cards      = [],   # filled after parallel summary run below
                 dashboard_sections = sections,
             ))
 
         if not persona_views:
             log.error("No valid persona views assembled — check orchestrator emit")
             raise RuntimeError("Orchestrator produced no valid persona views")
+
+        # ── Run all summary agents in parallel ────────────────────────────────
+        # Previously sequential (one per persona). Now all fire at once.
+        from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+        def _run_summary(idx: int, role: str, focus_areas: list, objective: str, kpis: list) -> tuple[int, list]:
+            log.info("Running SummaryAgent for persona '%s' with %d KPIs", role, len(kpis))
+            try:
+                cards = SummaryAgent().generate(
+                    persona_role       = role,
+                    focus_areas        = focus_areas,
+                    business_objective = objective,
+                    kpis               = kpis,
+                )
+            except Exception as exc:
+                log.warning("SummaryAgent failed for '%s': %s — using empty cards", role, exc)
+                cards = []
+            return idx, cards
+
+        with ThreadPoolExecutor(max_workers=len(_pending_summaries) or 1) as _pool:
+            _futures = {
+                _pool.submit(_run_summary, i, role, fa, obj, kd): i
+                for i, (role, fa, obj, kd) in enumerate(_pending_summaries)
+            }
+            for _fut in _as_completed(_futures):
+                idx, raw_cards = _fut.result()
+                persona_views[idx].summary_cards = [
+                    SummaryCard(
+                        title  = c.get("title", "Summary"),
+                        body   = c.get("body", ""),
+                        signal = c.get("signal", "neutral"),
+                    )
+                    for c in raw_cards
+                ]
 
         return IntelligenceConfig(
             generated_at = now,

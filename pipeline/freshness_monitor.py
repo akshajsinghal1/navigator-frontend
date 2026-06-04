@@ -199,8 +199,13 @@ def _check_company(entry: dict) -> None:
 
 def _do_data_refresh(entry: dict, new_updated_at: str | None, new_view_count: int | None) -> None:
     """
-    Data-only refresh: clear view cache + bump data_version + invalidate Redis.
-    Fast — no AI agents, just cache invalidation.
+    Data-only refresh:
+      1. Clear view cache so next chart fetch gets fresh Tableau rows
+      2. Re-run summary agents with fresh KPI values (the daily brief)
+      3. Persist updated config + invalidate Redis
+      4. Bump data_version so frontend knows to re-fetch
+
+    No full re-pipeline — KPI structure stays the same, only the narrative updates.
     """
     from api.routes.viewdata import clear_view_cache
     from storage.cache import ConfigCache
@@ -213,15 +218,18 @@ def _do_data_refresh(entry: dict, new_updated_at: str | None, new_view_count: in
             _REGISTRY[company_id]["status"] = "refreshing"
 
     try:
-        # 1. Clear view cache so next chart fetch gets fresh rows from Tableau
+        # 1. Clear view cache — fresh Tableau rows on next fetch
         clear_view_cache(workbook_content_url)
         log.info("Freshness: view cache cleared for '%s'", company_id)
 
-        # 2. Invalidate Redis so next dashboard load reads from file/DB
+        # 2. Re-run summary agents with fresh data (parallel, one per persona)
+        _refresh_summaries(company_id, workbook_content_url)
+
+        # 3. Invalidate Redis so frontend loads the updated config
         ConfigCache().invalidate(company_id)
         log.info("Freshness: Redis cache invalidated for '%s'", company_id)
 
-        # 3. Bump version so frontend knows to re-fetch
+        # 4. Bump data_version
         with _LOCK:
             if company_id in _REGISTRY:
                 _REGISTRY[company_id]["data_version"]      += 1
@@ -240,6 +248,125 @@ def _do_data_refresh(entry: dict, new_updated_at: str | None, new_view_count: in
         with _LOCK:
             if company_id in _REGISTRY:
                 _REGISTRY[company_id]["status"] = "fresh"
+
+
+def _refresh_summaries(company_id: str, workbook_content_url: str) -> None:
+    """
+    Re-run summary agents for every persona with fresh KPI values.
+    Fetches current L1 values from Tableau, then runs all summary agents in parallel.
+    Updates the stored config in-place.
+    """
+    import json
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from api.routes.viewdata import _get_conn
+    from agents.summary_agent import SummaryAgent
+    from schemas.config import IntelligenceConfig, SummaryCard
+    from storage.db import get_session, ConfigRepo
+
+    # Load the existing config
+    config_dict = _load_config(company_id)
+    if not config_dict:
+        log.warning("Freshness: no config found for '%s' — skipping summary refresh", company_id)
+        return
+
+    try:
+        config = IntelligenceConfig.model_validate(config_dict)
+    except Exception as exc:
+        log.warning("Freshness: config parse failed for '%s': %s", company_id, exc)
+        return
+
+    # Fetch fresh L1 values from Tableau for every unique view used in the config
+    try:
+        conn = _get_conn()
+        wb   = conn.get_workbook_by_content_url(workbook_content_url)
+        if not wb:
+            log.warning("Freshness: workbook not found for '%s'", company_id)
+            return
+
+        # Collect unique views and fetch fresh rows
+        view_rows: dict[str, list[dict]] = {}
+        for pv in config.personas:
+            for sec in pv.dashboard_sections:
+                for kpi in sec.kpis:
+                    if kpi.l1 and kpi.l1.view_name and kpi.l1.view_name not in view_rows:
+                        try:
+                            rows = conn.get_view_data_by_name(wb["luid"], kpi.l1.view_name)
+                            view_rows[kpi.l1.view_name] = rows or []
+                        except Exception as e:
+                            log.debug("Freshness: could not fetch view '%s': %s", kpi.l1.view_name, e)
+                            view_rows[kpi.l1.view_name] = []
+    except Exception as exc:
+        log.warning("Freshness: could not fetch fresh view data: %s — using stored values", exc)
+        view_rows = {}
+
+    def _fresh_value(kpi) -> float | None:
+        """Try to get a fresh L1 value from newly fetched rows."""
+        if not kpi.l1:
+            return kpi.l1.value if kpi.l1 else None
+        rows = view_rows.get(kpi.l1.view_name, [])
+        if not rows or not kpi.l1.field_name:
+            return kpi.l1.value
+        from tableau.view_data import summarise_rows
+        summary = summarise_rows(rows, max_rows=len(rows))
+        nm = summary.get("numeric_summary", {})
+        if kpi.l1.field_name in nm:
+            return nm[kpi.l1.field_name].get("mean") or kpi.l1.value
+        return kpi.l1.value
+
+    # Build summary inputs per persona
+    def _build_summary_input(pv) -> list[dict]:
+        items = []
+        for sec in pv.dashboard_sections:
+            for kpi in sec.kpis:
+                items.append({
+                    "name":             kpi.name,
+                    "description":      kpi.description,
+                    "layer":            kpi.layer,
+                    "value":            _fresh_value(kpi),
+                    "unit":             kpi.l1.unit if kpi.l1 else "",
+                    "trend_direction":  kpi.trend_direction,
+                    "trend_pct":        kpi.trend_pct,
+                    "key_insight":      kpi.explanation.key_insight if kpi.explanation else None,
+                    "risk":             kpi.explanation.risk        if kpi.explanation else None,
+                })
+        return items
+
+    # Run all summary agents in parallel
+    def _run_one(idx: int, pv) -> tuple[int, list]:
+        kpi_data = _build_summary_input(pv)
+        try:
+            cards = SummaryAgent().generate(
+                persona_role       = pv.persona.role,
+                focus_areas        = pv.persona.focus_areas,
+                business_objective = config.objective,
+                kpis               = kpi_data,
+            )
+        except Exception as exc:
+            log.warning("Freshness: SummaryAgent failed for '%s': %s", pv.persona.role, exc)
+            cards = []
+        return idx, cards
+
+    log.info("Freshness: re-running %d summary agents in parallel for '%s'", len(config.personas), company_id)
+    with ThreadPoolExecutor(max_workers=len(config.personas) or 1) as pool:
+        futures = {pool.submit(_run_one, i, pv): i for i, pv in enumerate(config.personas)}
+        for fut in as_completed(futures):
+            idx, raw_cards = fut.result()
+            config.personas[idx].summary_cards = [
+                SummaryCard(title=c.get("title", ""), body=c.get("body", ""), signal=c.get("signal", "neutral"))
+                for c in raw_cards
+            ]
+
+    # Persist updated config
+    try:
+        with get_session() as session:
+            ConfigRepo.upsert(
+                session, company_id,
+                f"data-refresh-{int(__import__('time').time())}",
+                config_dict=config.model_dump(mode="json"),
+            )
+        log.info("Freshness: summary cards updated for '%s'", company_id)
+    except Exception as exc:
+        log.warning("Freshness: could not persist refreshed summaries for '%s': %s", company_id, exc)
 
 
 def _do_repipeline(entry: dict, new_updated_at: str | None, new_view_count: int | None) -> None:
