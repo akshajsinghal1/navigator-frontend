@@ -64,11 +64,15 @@ def _inject_supplementary_kpis(
                 view_name  = kpi_raw.get("l1_view_name", ""),
                 field_name = kpi_raw.get("l1_field_name", ""),
             )
+            # Normalize aggregation: "mean" is not a valid schema value → map to "avg"
+            _AGG_NORM = {"mean": "avg", "average": "avg", "total": "sum", "cnt": "count"}
+            raw_agg = kpi_raw.get("aggregation", "sum") or "sum"
+            agg = _AGG_NORM.get(raw_agg.lower(), raw_agg)
             chart = ChartSpec(
                 type         = kpi_raw.get("chart_type", "kpi_card"),
                 x_axis       = kpi_raw.get("x_axis"),
                 x_axis_type  = kpi_raw.get("x_axis_type"),
-                aggregation  = kpi_raw.get("aggregation", "sum"),
+                aggregation  = agg,
             )
             explanation = Explanation(
                 what           = kpi_raw.get("description", ""),

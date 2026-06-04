@@ -138,7 +138,7 @@ _QA_TOOLS = [
                             "chart_type":      {"type": "string"},
                             "x_axis":          {"type": "string"},
                             "x_axis_type":     {"type": "string"},
-                            "aggregation":     {"type": "string"},
+                            "aggregation":     {"type": "string", "enum": ["sum", "avg", "count", "min", "max"]},
                             "gap_filled":      {"type": "string", "description": "What gap this KPI fills"},
                         },
                         "required": ["id", "name", "description", "target_persona",
@@ -289,7 +289,16 @@ class QAAgent(BaseAgent):
 
         df = pd.DataFrame(rows)  # noqa: F841
         try:
-            result = eval(expression, {"__builtins__": {}, "pd": pd}, {"df": df})  # noqa: S307
+            _safe_builtins = {
+                "float": float, "int": int, "str": str, "bool": bool,
+                "len": len, "sum": sum, "round": round, "abs": abs,
+                "min": min, "max": max, "list": list, "tuple": tuple,
+                "dict": dict, "set": set, "range": range,
+                "enumerate": enumerate, "zip": zip,
+                "True": True, "False": False, "None": None,
+                "isinstance": isinstance,
+            }
+            result = eval(expression, {"__builtins__": _safe_builtins, "pd": pd}, {"df": df})  # noqa: S307
             result_str = result.to_string() if hasattr(result, "to_string") else str(result)
             if len(result_str) > 2000:
                 result_str = result_str[:2000] + "…"

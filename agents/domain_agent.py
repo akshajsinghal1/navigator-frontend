@@ -429,10 +429,20 @@ class DomainAgent(BaseAgent):
         df = pd.DataFrame(rows)  # noqa: F841  (used in eval below)
 
         try:
-            # Safe eval: only df and pd in scope, no builtins that allow I/O or imports
+            # Safe eval: df + pd + common numeric builtins.
+            # No I/O, no imports, no exec.
+            _safe_builtins = {
+                "float": float, "int": int, "str": str, "bool": bool,
+                "len": len, "sum": sum, "round": round, "abs": abs,
+                "min": min, "max": max, "list": list, "tuple": tuple,
+                "dict": dict, "set": set, "range": range,
+                "enumerate": enumerate, "zip": zip,
+                "True": True, "False": False, "None": None,
+                "isinstance": isinstance,
+            }
             result = eval(  # noqa: S307
                 expression,
-                {"__builtins__": {}, "pd": pd},
+                {"__builtins__": _safe_builtins, "pd": pd},
                 {"df": df},
             )
 
