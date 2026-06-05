@@ -2,15 +2,17 @@
 // Renders one KPI from the Intelligence Config.
 //
 // Data flow:
-//   1. Fetch live rows from /api/viewdata once on mount
-//   2. When period changes → filter rows by date column (L2)
-//   3. Compute headline value from filtered rows
-//   4. Pass filtered rows to NavigatorKpiChart for rendering
+//   1. Fetch live rows from /api/viewdata once on mount (cached across cards)
+//   2. Compute headline from rows using the agent-defined projection method
+//   3. Pass rows to NavigatorKpiChart for rendering
 //
 // Period behaviour:
-//   "now" → headline = kpi.l1.value (pipeline-computed, all-time)
-//   "7d"  → headline = aggregate of last 7d rows (live recomputed)
-//   "30d" → headline = aggregate of last 30d rows (live recomputed)
+//   "now" → L1 value (pipeline-computed snapshot)
+//   "7d"  → FORWARD projection: where will this metric be in the next 7 days?
+//   "30d" → FORWARD projection: where will this metric be in the next 30 days?
+//
+// The projection uses l2_projection.method (ratio/stable/growth_rate/daily_rate)
+// applied to current Tableau rows to extrapolate the trend forward.
 //
 // Layout:
 //   ┌──────────────────────────────────────────────┐
