@@ -638,12 +638,14 @@ function buildOption(
           color: SERIES_COLORS,
           tooltip: { ...tt, trigger: "axis", axisPointer: { type: isStackedBar ? "shadow" : "line" } },
           legend: compact
-            ? { type: "scroll", top: 2, icon: "circle", itemWidth: 6, itemHeight: 6,
+            // "plain" wraps to multiple rows → 10 items don't crowd into 1 scroll line
+            ? { type: "plain", top: 2, orient: "horizontal",
+                icon: "circle", itemWidth: 6, itemHeight: 6, itemGap: 8,
                 textStyle: { color: palette.ink4, fontFamily: CHART_NUM_FONT, fontSize: 8 } }
             : { type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
                 textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 } },
           grid: compactGrid
-            ? { ...compactGrid, top: compact ? Math.max(18, Math.ceil(series.length / 5) * 14) : 12 }
+            ? { ...compactGrid, top: compact ? Math.max(16, Math.ceil(series.length / 5) * 14) : 12 }
             : { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 32 },
           xAxis: {
             ...AXIS_BASE, type: "category", data: categories,
