@@ -196,6 +196,54 @@ function groupBy(
   return pairs;
 }
 
+// ── Multi-series grouping (for stacked charts with a breakdown dimension) ───────
+// Splits rows into one series per breakdown value, aligned on shared x categories.
+// e.g. x=Month, by=Referral Status, y=Referral Count →
+//   categories: [Jan, Feb, ...]
+//   series: [{name:"Escalated", data:[...]}, {name:"Pending", data:[...]}, ...]
+function groupByStacked(
+  rows: Record<string, unknown>[],
+  xCol: string,
+  byCol: string,
+  yCol: string,
+  agg: string,
+  xAxisType: string,
+): { categories: string[]; series: { name: string; data: number[] }[] } {
+  const xKeys: string[] = [];
+  const seenX = new Set<string>();
+  const byKeys: string[] = [];
+  const seenBy = new Set<string>();
+  const cell: Record<string, Record<string, number[]>> = {};
+
+  for (const row of rows) {
+    const xk = String(row[xCol] ?? "(null)");
+    const bk = String(row[byCol] ?? "(null)");
+    if (!seenX.has(xk))  { seenX.add(xk);   xKeys.push(xk); }
+    if (!seenBy.has(bk)) { seenBy.add(bk);  byKeys.push(bk); }
+    cell[xk] ??= {};
+    cell[xk][bk] ??= [];
+    if (agg === "count") {
+      cell[xk][bk].push(1);
+    } else {
+      const v = parseNum(row[yCol]);
+      if (v !== null) cell[xk][bk].push(v);
+    }
+  }
+
+  if (xAxisType === "temporal") {
+    xKeys.sort((a, b) => monthYearToNum(a) - monthYearToNum(b));
+  }
+
+  const series = byKeys.map((bk) => ({
+    name: bk,
+    data: xKeys.map((xk) => {
+      const vals = cell[xk]?.[bk];
+      return vals && vals.length ? Math.round(aggregate(vals, agg) * 1000) / 1000 : 0;
+    }),
+  }));
+  return { categories: xKeys, series };
+}
+
 // ── Projection series builder ─────────────────────────────────────────────────
 // Generates future x-labels + projected y-values to overlay as a dashed series.
 
@@ -371,6 +419,15 @@ function buildOption(
   let pairs = groupBy(rows, xCol, yCol, agg, xAxisType, sortOrder);
   if (!pairs.length) return null;
 
+  // Guard against degenerate "time series" — a sequential chart with a single
+  // data point is meaningless (e.g. a single-value KPI view where the agent
+  // wrongly picked line_chart over a non-existent date column). Fall back to
+  // null so the tile just shows the headline number (kpi_card behaviour).
+  const SEQUENTIAL_TYPES = new Set([
+    "line_chart", "area_chart", "stacked_area_chart", "bar_chart", "stacked_bar_chart",
+  ]);
+  if (pairs.length <= 1 && SEQUENTIAL_TYPES.has(ctype)) return null;
+
   // Apply maxPoints AFTER aggregation so counts/sums are correct
   // For temporal: keep last N (most recent); for categorical: keep as-is (already sorted)
   if (maxPoints && pairs.length > maxPoints) {
@@ -394,6 +451,12 @@ function buildOption(
   const xData = pairs.map((p) => p.x);
   const yData = pairs.map((p) => p.y);
   const tt    = chartTooltip(palette);
+
+  // Color palette for multi-series (stacked) charts
+  const SERIES_COLORS = [
+    palette.accent, palette.green, palette.amber, palette.red,
+    palette.ink3, "#7B6CF6", "#0B7A75", "#C2554D",
+  ];
 
   // Compact mode: y-axis labels for scale, NO x-axis labels (see modal for dates)
   // This keeps the tile clean — shape + scale is what matters in compact view
@@ -548,6 +611,47 @@ function buildOption(
   }
 
   // ── Bar ──────────────────────────────────────────────────────────────────
+  // ── True stacked charts (split by a breakdown dimension) ──────────────────
+  if ((ctype === "stacked_bar_chart" || ctype === "stacked_area_chart") && kpi.chart?.breakdown_by) {
+    const byCol = findColumn(rows, kpi.chart.breakdown_by);
+    if (byCol && byCol !== xCol && byCol !== yCol) {
+      const { categories, series } = groupByStacked(rows, xCol, byCol, yCol, agg, xAxisType);
+      if (series.length > 1) {
+        const isArea = ctype === "stacked_area_chart";
+        return {
+          backgroundColor: "transparent",
+          animationDuration: compact ? 200 : 600,
+          color: SERIES_COLORS,
+          tooltip: { ...tt, trigger: "axis", axisPointer: { type: isArea ? "line" : "shadow" } },
+          legend: compact ? { show: false } : {
+            type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+            textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 },
+          },
+          grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: compact ? 8 : 32 },
+          xAxis: {
+            ...AXIS_BASE, type: "category", data: categories,
+            axisLabel: compact ? COMPACT_AXIS_X.axisLabel
+              : { ...AXIS_BASE.axisLabel, rotate: categories.length > 8 ? 35 : 0, hideOverlap: true },
+          },
+          yAxis: { ...AXIS_BASE, type: "value" },
+          series: series.map((s, i) => ({
+            name: s.name,
+            type: isArea ? "line" : "bar",
+            stack: "total",
+            data: s.data,
+            ...(isArea
+              ? { smooth: true, symbol: "none",
+                  lineStyle: { width: 1.5, color: SERIES_COLORS[i % SERIES_COLORS.length] },
+                  areaStyle: { color: translucent(SERIES_COLORS[i % SERIES_COLORS.length], 0.45) } }
+              : { barMaxWidth: 40,
+                  itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length],
+                    borderRadius: i === series.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0] } }),
+          })),
+        };
+      }
+    }
+  }
+
   if (ctype === "bar_chart" || ctype === "stacked_bar_chart") {
     const hasProj = projPoints.length > 0;
     const projBarData = hasProj

@@ -120,6 +120,17 @@ For time-series data, choose the RIGHT type — NOT always line_chart:
 
 Use kpi_card ONLY when there is NO meaningful dimension to display — a single headline number.
 
+CRITICAL — match chart type to what the view ACTUALLY contains:
+  Look at `available_dimensions`. A time-series chart (line_chart, area_chart) REQUIRES
+  a date/time/sequential dimension to exist in available_dimensions.
+  → If available_dimensions has NO date/time/period/sequential field (e.g. the view only
+    has a status/color flag + a single aggregate number), you MUST use kpi_card or gauge_chart.
+    Do NOT pick line_chart/area_chart — there is nothing to plot over time, and the chart
+    will render empty.
+  → Example of the trap: a view "Predicted Staffing Gap KPI" with columns
+    [Gap Color, Avg Predicted Shortage] is a SINGLE VALUE — use kpi_card, NOT line_chart.
+    The trend version lives in a SEPARATE view (e.g. "...Forecast Trend") that has a date column.
+
 ANTI-DEFAULTS — do NOT lazily reach for these:
   ✗ Do NOT use bar_chart when horizontal_bar_chart, stacked_bar_chart, waterfall_chart, or pie_chart
     would tell the story better.

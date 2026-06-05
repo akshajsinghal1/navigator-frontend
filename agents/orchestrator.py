@@ -372,13 +372,24 @@ Rules
 - One objective sentence. Design as many personas, domains, and KPIs as the workbook genuinely
   supports — NEVER cap artificially. Every KPI must be distinct and data-backed.
 
-- VIEW COVERAGE — mandatory:
-  Every view in `available_api_views` must appear in at least one domain's relevant_views.
-  Before calling generate_chart_spec, mentally walk through available_api_views and confirm
-  each view has been assigned to a domain. If any view is missing, add it to an appropriate
-  domain (or create a new domain for it) and design at least one KPI from it.
-  The only exception: a view that is purely administrative (no measurable business metric
-  inside) — exclude it explicitly with a one-line note in that domain's description.
+- VIEW COVERAGE — mandatory, but coverage means USED, not standalone KPI:
+  Every view in `available_api_views` must be USED — but "used" can mean either
+  (a) it powers its own KPI, OR (b) it is attached to another KPI as a supporting band.
+  Before calling generate_chart_spec, walk through available_api_views and confirm each
+  view is accounted for one of these two ways.
+  Exception: a view that is purely administrative (no measurable business metric, e.g.
+  a filter panel or a dashboard container) — exclude it with a one-line note.
+
+- CONFIDENCE / BOUND VIEWS — do NOT make these standalone KPIs:
+  Views named like "Upper Confidence", "Lower Confidence", "Upper Gap Confidence",
+  "Lower Gap Confidence", "p10", "p90", "interval", "bound" are the confidence BANDS
+  for a forecast — they are not decisions on their own. A standalone KPI that just says
+  "Lower Confidence Limit = 69.7" is meaningless to a user.
+  Instead: attach them to the forecast KPI they belong to. The forecast KPI (e.g.
+  "Forecasted Occupancy") should reference the upper/lower views as its confidence band
+  (the frontend renders them automatically as a shaded band on the line chart).
+  NEVER create a persona whose KPIs are only confidence bounds — that is a junk persona.
+  Count these bound views as "used" via their parent forecast KPI for coverage purposes.
 
 - DEDUPLICATION — before emitting, scan your KPI list for near-duplicate metrics. Two KPIs
   measuring the same underlying fact are near-duplicates even if named differently:
