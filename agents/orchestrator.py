@@ -128,7 +128,7 @@ def _infer_unit(kpi_name: str, field_name: str, value) -> str:
         "yield rate", "uptime", "availability", "fill rate",
         "on-time", "on time", "accuracy", "adherence", "compliance",
         "engagement rate", "open rate", "click-through", "ctr",
-        "roas", "return on", "occupancy rate", "occupancy %",
+        "roas", "return on", "occupancy", "occupancy rate", "occupancy %",
         # Healthcare
         "readmission rate", "mortality rate", "complication rate",
         "infection rate", "readmission %",
@@ -201,10 +201,14 @@ def _infer_unit(kpi_name: str, field_name: str, value) -> str:
 
 def _infer_format(unit: str) -> str:
     """Map a unit string to an l1_format value for the frontend."""
-    if unit == "USD":
+    u = (unit or "").strip().lower()
+    if u in ("usd", "$", "€", "£", "¥"):
         return "currency"
-    if unit == "%":
+    # Domain agents sometimes return 'ratio', 'rate', 'percent' etc. instead of '%'
+    if u in ("%", "percent", "pct", "percentage", "rate", "ratio"):
         return "percentage"
+    if u in ("days", "hrs", "hours"):
+        return ",.1f"
     return "number"
 
 _SYSTEM_PROMPT = """\
@@ -863,12 +867,18 @@ class OrchestratorAgent(BaseAgent):
                 )
 
                 # L1
+                # Format: trust agent's format only when it's specific (not the
+                # generic "number" fallback). If agent said "number" but the unit
+                # is %, override with "percentage" so the frontend renders correctly.
+                raw_fmt  = kpi_raw.get("l1_format") or ""
+                l1_format = raw_fmt if raw_fmt not in ("number", "", None) else _infer_format(kpi_unit)
+
                 l1 = None
                 if kpi_raw.get("l1_view_name"):
                     l1 = L1Data(
                         value      = raw_value,
                         unit       = kpi_unit,
-                        format     = kpi_raw.get("l1_format", "number") or _infer_format(kpi_unit),
+                        format     = l1_format,
                         view_name  = kpi_raw["l1_view_name"],
                         field_name = kpi_raw["l1_field_name"],
                     )
@@ -1023,6 +1033,28 @@ class OrchestratorAgent(BaseAgent):
                     )
                     explicitly_dropped.add(kpi_id)
                     continue
+
+                # Rule 5: duplicate value from a dashboard/container view.
+                # Dashboard sheets (Navigator_*, *Dashboard*) aggregate the same
+                # numbers as dedicated KPI views → produce identical values.
+                # Keep the one from the dedicated view; drop the dashboard duplicate.
+                _CONTAINER_HINTS = ("navigator", "dashboard", "analytics")
+                view_nm = (kpi_raw.get("l1_view_name") or "").lower()
+                is_container = any(h in view_nm for h in _CONTAINER_HINTS)
+                if is_container:
+                    # Check if an existing KPI already has the same value
+                    same_val = any(
+                        k.l1 and k.l1.value == raw_value
+                        for k in all_kpis.values()
+                    )
+                    if same_val:
+                        log.info(
+                            "Dropping KPI '%s' — duplicate value %.4s from dashboard "
+                            "container view '%s'.",
+                            kpi_id, str(raw_value), kpi_raw.get("l1_view_name"),
+                        )
+                        explicitly_dropped.add(kpi_id)
+                        continue
 
                 all_kpis[kpi_id] = kpi_obj
 
