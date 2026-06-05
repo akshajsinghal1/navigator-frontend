@@ -402,7 +402,10 @@ function buildOption(
   let yCol = findColumn(rows, yHint ?? "") ?? autoYCol(rows, xCol);
 
   if (xCol && xCol === yCol) xCol = autoXCol(rows, yCol);
-  if (!xCol || !yCol || xCol === yCol) return null;
+  // Heatmap can work with 2 categorical dimensions + severity mapping — no numeric yCol needed.
+  // Skip the early null-return for heatmap so its own barFallback logic can run.
+  if (!xCol || xCol === yCol) return null;
+  if (!yCol && ctype !== "heatmap_chart") return null;
 
   // Auto-correct swapped x/y: if x is numeric and y is categorical the agent
   // put value and label on the wrong axes — swap so the chart renders correctly.
@@ -416,7 +419,7 @@ function buildOption(
     }
   }
 
-  let pairs = groupBy(rows, xCol, yCol, agg, xAxisType, sortOrder);
+  let pairs = yCol ? groupBy(rows, xCol!, yCol, agg, xAxisType, sortOrder) : [];
   if (!pairs.length) return null;
 
   // Guard against degenerate "time series" — a sequential chart with a single
@@ -479,14 +482,23 @@ function buildOption(
       fontFamily:  CHART_NUM_FONT,
       fontSize:    8,
       hideOverlap: true,
-      // Short formatter: "11/3/2026" → "11/3", "November 2026" → "Nov", "Q1 2026" → "Q1"
-      formatter:   (val: string) => {
+      // Short formatter: keeps day when there's a full date so daily data
+      // doesn't collapse all to the same month label ("May May May...")
+      formatter: (val: string) => {
+        // "April 10, 2026" / "May 3, 2026" → "Apr 10" / "May 3"
+        const mdy2 = val.match(/^([A-Za-z]{3})[a-z]*\s+(\d{1,2}),\s*\d{4}$/);
+        if (mdy2) return `${mdy2[1]} ${mdy2[2]}`;
+        // "11/3/2026" → "11/3"
         const mdy = val.match(/^(\d{1,2})\/(\d{1,2})\/\d{4}$/);
         if (mdy) return `${mdy[1]}/${mdy[2]}`;
-        const my = val.match(/^([A-Za-z]{3})[a-z]*/);
+        // "April 2026" / "November 2026" → "Apr" / "Nov"  (month+year, no day)
+        const my = val.match(/^([A-Za-z]{3})[a-z]*\s+\d{4}$/);
         if (my) return my[1];
+        // "April" alone → "Apr"
+        const mo = val.match(/^([A-Za-z]{3})[a-z]*$/);
+        if (mo) return mo[1];
         if (/^Q\d/i.test(val)) return val.slice(0, 2);
-        return val.length > 6 ? val.slice(0, 6) : val;
+        return val.length > 7 ? val.slice(0, 7) : val;
       },
     },
     splitLine: { show: false },
@@ -610,19 +622,26 @@ function buildOption(
     };
   }
 
-  // ── Bar ──────────────────────────────────────────────────────────────────
-  // ── True stacked charts (split by a breakdown dimension) ──────────────────
-  if ((ctype === "stacked_bar_chart" || ctype === "stacked_area_chart") && kpi.chart?.breakdown_by) {
+  // ── Multi-series charts (split by a breakdown dimension) ─────────────────
+  // Handles: stacked_bar, stacked_area (stacked), line_chart, area_chart (non-stacked multi-series)
+  const MULTI_SERIES_TYPES = new Set([
+    "stacked_bar_chart", "stacked_area_chart", "line_chart", "area_chart",
+  ]);
+  if (MULTI_SERIES_TYPES.has(ctype) && kpi.chart?.breakdown_by) {
     const byCol = findColumn(rows, kpi.chart.breakdown_by);
     if (byCol && byCol !== xCol && byCol !== yCol) {
-      const { categories, series } = groupByStacked(rows, xCol, byCol, yCol, agg, xAxisType);
+      const { categories, series } = groupByStacked(rows, xCol!, byCol, yCol ?? byCol, agg, xAxisType);
       if (series.length > 1) {
-        const isArea = ctype === "stacked_area_chart";
+        const isStackedArea = ctype === "stacked_area_chart";
+        const isStackedBar  = ctype === "stacked_bar_chart";
+        const isLine        = ctype === "line_chart";
+        const isArea        = ctype === "area_chart";
+        const stacked       = isStackedArea || isStackedBar;
         return {
           backgroundColor: "transparent",
           animationDuration: compact ? 200 : 600,
           color: SERIES_COLORS,
-          tooltip: { ...tt, trigger: "axis", axisPointer: { type: isArea ? "line" : "shadow" } },
+          tooltip: { ...tt, trigger: "axis", axisPointer: { type: isStackedBar ? "shadow" : "line" } },
           legend: compact ? { show: false } : {
             type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
             textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 },
@@ -633,24 +652,25 @@ function buildOption(
             axisLabel: compact ? COMPACT_AXIS_X.axisLabel
               : { ...AXIS_BASE.axisLabel, rotate: categories.length > 8 ? 35 : 0, hideOverlap: true },
           },
-          yAxis: { ...AXIS_BASE, type: "value" },
-          series: series.map((s, i) => ({
-            name: s.name,
-            type: isArea ? "line" : "bar",
-            stack: "total",
-            data: s.data,
-            ...(isArea
-              ? { smooth: true, symbol: "none",
-                  lineStyle: { width: 1.5, color: SERIES_COLORS[i % SERIES_COLORS.length] },
-                  areaStyle: { color: translucent(SERIES_COLORS[i % SERIES_COLORS.length], 0.45) } }
-              : { barMaxWidth: 40,
-                  itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length],
-                    borderRadius: i === series.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0] } }),
-          })),
+          yAxis: { ...AXIS_BASE, type: "value", scale: (isLine || isArea) && !stacked },
+          series: series.map((s, i) => {
+            const c = SERIES_COLORS[i % SERIES_COLORS.length];
+            const base = { name: s.name, data: s.data, ...(stacked ? { stack: "total" } : {}) };
+            if (isStackedBar) return { ...base, type: "bar", barMaxWidth: 40,
+              itemStyle: { color: c, borderRadius: i === series.length - 1 ? [3,3,0,0] : [0,0,0,0] } };
+            // line or area (stacked or not)
+            return { ...base, type: "line", smooth: true, symbol: "none",
+              lineStyle: { width: compact ? 1.5 : 2, color: c },
+              ...(isStackedArea || isArea
+                ? { areaStyle: { color: translucent(c, stacked ? 0.45 : 0.15) } }
+                : {}),
+            };
+          }),
         };
       }
     }
   }
+  // ── Bar ──────────────────────────────────────────────────────────────────
 
   if (ctype === "bar_chart" || ctype === "stacked_bar_chart") {
     const hasProj = projPoints.length > 0;
