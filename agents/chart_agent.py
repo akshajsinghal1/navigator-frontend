@@ -180,6 +180,14 @@ HEATMAP RULES — heatmap_chart needs TWO categorical (non-temporal) dimensions:
   → Example: "Referrals by Department" → breakdown_by = "Department Name" (or closest match)
   → If breakdown makes no sense for the chart type, reconsider the chart type, not the breakdown
 
+CATEGORICAL-ONLY VIEWS (no numeric measure):
+  If the view has only categorical columns (e.g. Departments, Facilities, Risk Category)
+  with NO numeric measure column:
+  → Use heatmap_chart if TWO categorical dimensions exist — the severity mapping
+    (HIGH/MEDIUM/LOW, AMBER/GREEN, RED/AMBER/GREEN) acts as the intensity.
+  → Use horizontal_bar_chart if ONE categorical dimension — shows count per category.
+  → NEVER use table — it renders as a blank tile in the frontend.
+
 ANTI-DEFAULTS — do NOT lazily reach for these:
   ✗ Do NOT use bar_chart when horizontal_bar_chart, stacked_bar_chart, waterfall_chart, or pie_chart
     would tell the story better.

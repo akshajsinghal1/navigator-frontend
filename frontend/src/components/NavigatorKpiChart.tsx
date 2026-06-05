@@ -399,7 +399,13 @@ function buildOption(
     axisLine:  { show: false },
     splitLine: { show: false },
   };
-  const ctype = (kpi.chart?.type ?? "kpi_card").toLowerCase();
+  // Remap "table" (last-resort fallback) to a renderable type:
+  //   2D categorical (x + breakdown) → heatmap_chart (with severity coloring)
+  //   1D categorical                 → horizontal_bar_chart
+  const rawType = (kpi.chart?.type ?? "kpi_card").toLowerCase();
+  const ctype   = rawType === "table"
+    ? (kpi.chart?.breakdown_by ? "heatmap_chart" : "horizontal_bar_chart")
+    : rawType;
   if (ctype === "kpi_card" || ctype === "scorecard") return null;
   if (!rows.length) return null;
 
@@ -1165,14 +1171,26 @@ function buildOption(
         const vals = heatData.map(d => d[2]);
         const minV = Math.min(...vals);
         const maxV = Math.max(...vals);
-        // Use RAG when:
-        //  - severity-mapped (values are 1/2/3 from HIGH/MEDIUM/LOW categorical) → green→amber→red
-        //  - pure numeric all-negative → green (least bad) → red (worst)
-        // Use single-color accent gradient for mixed/positive numeric.
+        // RAG for ALL heatmaps — direction depends on data:
+        //   severity-mapped (1/2/3 from categorical risk): green=1 → red=3
+        //   all-negative numeric: green=least-bad → red=worst (most negative)
+        //   positive numeric: green=lowest → amber=middle → red=highest
+        //   (relative within dataset — shows which cells stand out)
+        // Single-color only if there's truly no variation (all same value).
+        const hasVariation = maxV > minV;
         const isSeverityMapped = severityCol !== null;
         const allNeg = vals.every(v => v <= 0);
-        const useRAG  = isSeverityMapped || allNeg;
+        // For all-negative: reverse the scale so most-negative = red (worst)
+        const colors: string[] = (isSeverityMapped || !allNeg)
+          ? [RAG_GREEN, RAG_AMBER, RAG_RED]   // low=green, high=red
+          : [RAG_RED,   RAG_AMBER, RAG_GREEN]; // most-negative=red, least=green
         return {
+          show: false,
+          min: minV,
+          max: maxV,
+          inRange: hasVariation
+            ? { color: colors }
+            : { color: [translucent(palette.accent, 0.4), palette.accent] },
         };
       })(),
       series: [{ type: "heatmap", data: heatData, emphasis: { itemStyle: { shadowBlur: 10 } } }],
