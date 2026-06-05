@@ -613,7 +613,59 @@ function buildOption(
     });
   }
 
-  // ── Line / Area ──────────────────────────────────────────────────────────
+  // ── Multi-series charts (split by a breakdown dimension) ─────────────────
+  // MUST come before the single-series line/area block — otherwise line_chart
+  // with breakdown_by hits the single-series block first and returns early.
+  const MULTI_SERIES_TYPES = new Set([
+    "stacked_bar_chart", "stacked_area_chart", "line_chart", "area_chart",
+  ]);
+  if (MULTI_SERIES_TYPES.has(ctype) && kpi.chart?.breakdown_by) {
+    const byCol = findColumn(rows, kpi.chart.breakdown_by);
+    if (byCol && byCol !== xCol && byCol !== yCol) {
+      const { categories, series } = groupByStacked(rows, xCol!, byCol, yCol ?? byCol, agg, xAxisType);
+      if (series.length >= 1) {
+        const isStackedArea = ctype === "stacked_area_chart";
+        const isStackedBar  = ctype === "stacked_bar_chart";
+        const isLine        = ctype === "line_chart";
+        const isArea        = ctype === "area_chart";
+        const stacked       = isStackedArea || isStackedBar;
+        return {
+          backgroundColor: "transparent",
+          animationDuration: compact ? 200 : 600,
+          color: SERIES_COLORS,
+          tooltip: { ...tt, trigger: "axis", axisPointer: { type: isStackedBar ? "shadow" : "line" } },
+          legend: compact
+            ? { type: "scroll", top: 2, icon: "circle", itemWidth: 6, itemHeight: 6,
+                textStyle: { color: palette.ink4, fontFamily: CHART_NUM_FONT, fontSize: 8 } }
+            : { type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+                textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 } },
+          grid: compactGrid
+            ? { ...compactGrid, top: compact ? 18 : 12 }
+            : { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 32 },
+          xAxis: {
+            ...AXIS_BASE, type: "category", data: categories,
+            axisLabel: compact ? COMPACT_AXIS_X.axisLabel
+              : { ...AXIS_BASE.axisLabel, rotate: categories.length > 8 ? 35 : 0, hideOverlap: true },
+          },
+          yAxis: { ...AXIS_BASE, type: "value", scale: (isLine || isArea) && !stacked },
+          series: series.map((s, i) => {
+            const c = SERIES_COLORS[i % SERIES_COLORS.length];
+            const base = { name: s.name, data: s.data, ...(stacked ? { stack: "total" } : {}) };
+            if (isStackedBar) return { ...base, type: "bar", barMaxWidth: 40,
+              itemStyle: { color: c, borderRadius: i === series.length - 1 ? [3,3,0,0] : [0,0,0,0] } };
+            return { ...base, type: "line", smooth: true, symbol: "none",
+              lineStyle: { width: compact ? 1.5 : 2, color: c },
+              ...(isStackedArea || isArea
+                ? { areaStyle: { color: translucent(c, stacked ? 0.45 : 0.15) } }
+                : {}),
+            };
+          }),
+        };
+      }
+    }
+  }
+
+  // ── Line / Area (single series — no breakdown) ───────────────────────────
   if (ctype === "line_chart" || ctype === "area_chart") {
     const hasProj = projPoints.length > 0;
     const projYData = hasProj
@@ -689,61 +741,6 @@ function buildOption(
     };
   }
 
-  // ── Multi-series charts (split by a breakdown dimension) ─────────────────
-  // Handles: stacked_bar, stacked_area (stacked), line_chart, area_chart (non-stacked multi-series)
-  const MULTI_SERIES_TYPES = new Set([
-    "stacked_bar_chart", "stacked_area_chart", "line_chart", "area_chart",
-  ]);
-  if (MULTI_SERIES_TYPES.has(ctype) && kpi.chart?.breakdown_by) {
-    const byCol = findColumn(rows, kpi.chart.breakdown_by);
-    if (byCol && byCol !== xCol && byCol !== yCol) {
-      const { categories, series } = groupByStacked(rows, xCol!, byCol, yCol ?? byCol, agg, xAxisType);
-      // Use multi-series rendering even for 1 series: tooltip/legend shows the breakdown
-      // dimension name (e.g. "Central Care Institute") not the generic KPI name.
-      if (series.length >= 1) {
-        const isStackedArea = ctype === "stacked_area_chart";
-        const isStackedBar  = ctype === "stacked_bar_chart";
-        const isLine        = ctype === "line_chart";
-        const isArea        = ctype === "area_chart";
-        const stacked       = isStackedArea || isStackedBar;
-        return {
-          backgroundColor: "transparent",
-          animationDuration: compact ? 200 : 600,
-          color: SERIES_COLORS,
-          tooltip: { ...tt, trigger: "axis", axisPointer: { type: isStackedBar ? "shadow" : "line" } },
-          // Show a compact legend even in tile mode for multi-series — without it,
-          // users can't tell that 5 facility/dept lines exist when values are similar.
-          legend: compact
-            ? { type: "scroll", top: 2, icon: "circle", itemWidth: 6, itemHeight: 6,
-                textStyle: { color: palette.ink4, fontFamily: CHART_NUM_FONT, fontSize: 8 } }
-            : { type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
-                textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 } },
-          grid: compactGrid
-            ? { ...compactGrid, top: compact ? 18 : 12 }   // extra room for legend
-            : { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 32 },
-          xAxis: {
-            ...AXIS_BASE, type: "category", data: categories,
-            axisLabel: compact ? COMPACT_AXIS_X.axisLabel
-              : { ...AXIS_BASE.axisLabel, rotate: categories.length > 8 ? 35 : 0, hideOverlap: true },
-          },
-          yAxis: { ...AXIS_BASE, type: "value", scale: (isLine || isArea) && !stacked },
-          series: series.map((s, i) => {
-            const c = SERIES_COLORS[i % SERIES_COLORS.length];
-            const base = { name: s.name, data: s.data, ...(stacked ? { stack: "total" } : {}) };
-            if (isStackedBar) return { ...base, type: "bar", barMaxWidth: 40,
-              itemStyle: { color: c, borderRadius: i === series.length - 1 ? [3,3,0,0] : [0,0,0,0] } };
-            // line or area (stacked or not)
-            return { ...base, type: "line", smooth: true, symbol: "none",
-              lineStyle: { width: compact ? 1.5 : 2, color: c },
-              ...(isStackedArea || isArea
-                ? { areaStyle: { color: translucent(c, stacked ? 0.45 : 0.15) } }
-                : {}),
-            };
-          }),
-        };
-      }
-    }
-  }
   // ── Bar ──────────────────────────────────────────────────────────────────
 
   if (ctype === "bar_chart" || ctype === "stacked_bar_chart") {
