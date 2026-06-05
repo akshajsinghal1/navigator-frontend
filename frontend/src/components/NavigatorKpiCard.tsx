@@ -508,9 +508,10 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
     if (kpi.trend_direction === "up" && trendPct > 5)                       return "stable";
     return "neutral";
   })();
-  const signalColor = kpiSignal === "critical" ? "#F44336"
-                    : kpiSignal === "warning"  ? "#FF9800"
-                    : kpiSignal === "stable"   ? "#4CAF50"
+  // Use theme palette — same tones as summary cards, not jarring primary colors
+  const signalColor = kpiSignal === "critical" ? palette.red
+                    : kpiSignal === "warning"  ? palette.amber
+                    : kpiSignal === "stable"   ? palette.green
                     : "";
 
   // ── Hover handlers ─────────────────────────────────────────────────────────

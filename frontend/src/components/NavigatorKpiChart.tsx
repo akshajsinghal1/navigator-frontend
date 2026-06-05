@@ -98,10 +98,10 @@ function parseNum(v: unknown): number | null {
 //   3. Statistical outliers (>1.5σ from mean in "bad" direction = RED)
 //   4. Fallback → NEUTRAL (no override)
 
-const RAG_GREEN  = "#4CAF50";
-const RAG_AMBER  = "#FF9800";
-const RAG_RED    = "#F44336";
-const RAG_NEUTRAL= ""; // use theme default
+// RAG colors come from the theme palette — same tones used in summary cards.
+// Resolved at render time so they match the light/dark theme automatically.
+// Not hardcoded here; palette.green / .amber / .red are set in chartTheme.ts.
+const RAG_NEUTRAL = ""; // use theme default when no signal
 
 type RAGSignal = "critical" | "warning" | "stable" | "neutral";
 
@@ -129,16 +129,19 @@ function deriveRAGSignal(value: number, allValues: number[]): RAGSignal {
   return "stable";
 }
 
-function ragColor(signal: RAGSignal): string {
-  if (signal === "critical") return RAG_RED;
-  if (signal === "warning")  return RAG_AMBER;
-  if (signal === "stable")   return RAG_GREEN;
+type PaletteSubset = { green: string; amber: string; red: string };
+
+/** Return the theme-consistent RAG color for a signal level. */
+function ragColor(signal: RAGSignal, p: PaletteSubset): string {
+  if (signal === "critical") return p.red;
+  if (signal === "warning")  return p.amber;
+  if (signal === "stable")   return p.green;
   return RAG_NEUTRAL;
 }
 
-/** Map a numeric value to a RAG color using the full dataset. */
-function ragColorForValue(value: number, allValues: number[]): string {
-  return ragColor(deriveRAGSignal(value, allValues));
+/** Map a numeric value to a palette-consistent RAG color using the full dataset. */
+function ragColorForValue(value: number, allValues: number[], p: PaletteSubset): string {
+  return ragColor(deriveRAGSignal(value, allValues), p);
 }
 
 // ── Confidence interval detection ─────────────────────────────────────────────
@@ -838,7 +841,7 @@ function buildOption(
         // RAG: color each bar by its signal relative to the full dataset
         data: hPairs.map((p) => {
           const allY = hPairs.map((h) => h.y);
-          const c = ragColorForValue(p.y, allY);
+          const c = ragColorForValue(p.y, allY, palette);
           return {
             value: p.y,
             itemStyle: c
@@ -1182,8 +1185,8 @@ function buildOption(
         const allNeg = vals.every(v => v <= 0);
         // For all-negative: reverse the scale so most-negative = red (worst)
         const colors: string[] = (isSeverityMapped || !allNeg)
-          ? [RAG_GREEN, RAG_AMBER, RAG_RED]   // low=green, high=red
-          : [RAG_RED,   RAG_AMBER, RAG_GREEN]; // most-negative=red, least=green
+          ? [palette.green, palette.amber, palette.red]   // low=green, high=red
+          : [palette.red,   palette.amber, palette.green]; // most-negative=red, least=green
         return {
           show: false,
           min: minV,
