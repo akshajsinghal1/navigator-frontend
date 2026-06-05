@@ -333,6 +333,7 @@ class PipelineRunner:
                 workbook_meta   = wb_meta,
                 available_views = available_views,
                 manifest        = manifest,
+                view_cache      = view_data_cache,  # reuse profiler-fetched data (no re-fetch)
             )
 
             log.info("Running orchestrator agent")
@@ -344,7 +345,7 @@ class PipelineRunner:
                 from agents.orchestrator import _infer_persona_level
 
                 log.info("Running QA agent to review config and find gaps")
-                qa = QAAgent(connector=conn, workbook_luid=workbook_luid)
+                qa = QAAgent(connector=conn, workbook_luid=workbook_luid, view_cache=view_data_cache)
                 qa_result = qa.review(
                     config          = config,
                     eda             = eda or {},

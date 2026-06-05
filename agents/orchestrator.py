@@ -470,6 +470,7 @@ class OrchestratorAgent(BaseAgent):
         workbook_meta: dict[str, Any],
         available_views: list[str] | None = None,
         manifest = None,   # pipeline.manifest.WorkbookManifest | None
+        view_cache: dict[str, list[dict]] | None = None,
     ) -> None:
         super().__init__(
             model          = _MODEL,
@@ -483,6 +484,7 @@ class OrchestratorAgent(BaseAgent):
         self._workbook_meta   = workbook_meta
         self._available_views = available_views or []
         self._manifest        = manifest   # exact field names + reachability info
+        self._view_cache      = view_cache or {}   # profiler-fetched data, reused by domain agents
 
         # Semaphore: cap concurrent domain agents to avoid Gemini rate limits.
         # With multi-phase Phase-A, the orchestrator may issue 8-10 analyze_domain
@@ -604,8 +606,11 @@ class OrchestratorAgent(BaseAgent):
 
         log.info("Spinning up domain agent for: %s (%d KPI designs)", domain_name, len(kpi_designs))
 
+        # Seed each domain agent with the profiler's pre-fetched data for its views
+        domain_cache = {v: self._view_cache[v] for v in relevant_views if v in self._view_cache}
+
         with self._domain_sem:   # max 5 domain agents run concurrently
-            agent  = DomainAgent(self._connector, self._workbook_luid)
+            agent  = DomainAgent(self._connector, self._workbook_luid, view_cache=domain_cache)
             result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
 
         # Retry once if the agent finished without emitting (Gemini returned text
@@ -616,7 +621,7 @@ class OrchestratorAgent(BaseAgent):
                 "Domain '%s' returned 0 KPIs on first attempt — retrying once",
                 domain_name,
             )
-            agent2  = DomainAgent(self._connector, self._workbook_luid)
+            agent2  = DomainAgent(self._connector, self._workbook_luid, view_cache=domain_cache)
             result2 = agent2.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
             if result2.get("kpis"):
                 result = result2

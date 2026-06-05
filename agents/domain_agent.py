@@ -306,6 +306,7 @@ class DomainAgent(BaseAgent):
         self,
         connector: TableauConnector,
         workbook_luid: str,
+        view_cache: dict[str, list[dict]] | None = None,
     ) -> None:
         super().__init__(
             model         = _MODEL,
@@ -317,8 +318,9 @@ class DomainAgent(BaseAgent):
         self._connector     = connector
         self._workbook_luid = workbook_luid
         self._emit_result: dict | None = None
-        # Cache fetched rows by view name so run_analysis can use them without re-fetching
-        self._row_cache: dict[str, list[dict]] = {}
+        # Cache fetched rows by view name so run_analysis can use them without re-fetching.
+        # Seeded from the profiler's already-fetched data (avoids a redundant fetch pass).
+        self._row_cache: dict[str, list[dict]] = dict(view_cache) if view_cache else {}
 
     # ── run helper ───────────────────────────────────────────────────────────
 
@@ -378,19 +380,21 @@ class DomainAgent(BaseAgent):
         view_name = inp["view_name"]
         max_rows  = int(inp.get("max_rows", 0))  # 0 = no limit — fetch all rows for accurate L1/L2
 
-        try:
-            rows = self._connector.get_view_data_by_name(
-                workbook_luid = self._workbook_luid,
-                view_name     = view_name,
-                max_rows      = max_rows,
-            )
-        except ValueError as exc:
-            raise ToolError(str(exc)) from exc
-        except Exception as exc:
-            raise ToolError(f"Failed to fetch data for view {view_name!r}: {exc}") from exc
-
-        # Cache raw rows so run_analysis can use them without re-fetching
-        self._row_cache[view_name] = rows
+        # Reuse profiler-fetched data when available — avoids a redundant fetch.
+        rows = self._row_cache.get(view_name)
+        if rows is None:
+            try:
+                rows = self._connector.get_view_data_by_name(
+                    workbook_luid = self._workbook_luid,
+                    view_name     = view_name,
+                    max_rows      = max_rows,
+                )
+            except ValueError as exc:
+                raise ToolError(str(exc)) from exc
+            except Exception as exc:
+                raise ToolError(f"Failed to fetch data for view {view_name!r}: {exc}") from exc
+            # Cache raw rows so run_analysis can use them without re-fetching
+            self._row_cache[view_name] = rows
 
         # Pass all rows to the agent when the view is small (≤500 rows) so it
         # can compute ANY filtered/conditional metric accurately from the sample.
@@ -400,21 +404,13 @@ class DomainAgent(BaseAgent):
 
     def _tool_run_analysis(self, inp: dict) -> dict:
         """
-        Run a pandas expression on previously fetched view data.
+        Run a pandas expression (or multi-statement code) on fetched view data.
 
-        The agent uses this to explore data before deciding on KPI values —
-        no assumptions, every insight verified against real numbers.
-
-        Args:
-            view_name:  must have been fetched with fetch_view_data first
-            expression: a single pandas expression (not a statement)
-                        e.g. "df.groupby('Status')['Count'].sum()"
-                             "df['Turnaround Hours'].mean()"
-                             "df[df['Escalation Flag']==True].shape[0]"
-
-        Returns result as string so the agent can read and reason about it.
+        Numeric-looking string columns ('74.3%', '1,234') are auto-coerced to
+        numbers first, so groupby/mean just work — no manual cleaning needed.
+        Multi-statement code is supported (assignments then a final expression).
         """
-        import pandas as pd
+        from agents.analysis_sandbox import run_pandas_analysis, format_result
 
         view_name  = inp["view_name"]
         expression = inp["expression"].strip()
@@ -426,47 +422,20 @@ class DomainAgent(BaseAgent):
                 f"Call fetch_view_data first, then run_analysis."
             )
 
-        df = pd.DataFrame(rows)  # noqa: F841  (used in eval below)
-
         try:
-            # Safe eval: df + pd + common numeric builtins.
-            # No I/O, no imports, no exec.
-            import numpy as np  # noqa: PLC0415
-            _safe_builtins = {
-                "float": float, "int": int, "str": str, "bool": bool,
-                "len": len, "sum": sum, "round": round, "abs": abs,
-                "min": min, "max": max, "list": list, "tuple": tuple,
-                "dict": dict, "set": set, "range": range,
-                "enumerate": enumerate, "zip": zip,
-                "True": True, "False": False, "None": None,
-                "isinstance": isinstance,
-            }
-            result = eval(  # noqa: S307
-                expression,
-                {"__builtins__": _safe_builtins, "pd": pd, "np": np},
-                {"df": df},
-            )
-
-            # Convert result to a readable string the LLM can reason about
-            if hasattr(result, "to_string"):
-                result_str = result.to_string()
-            elif hasattr(result, "__len__") and len(result) > 50:
-                result_str = str(result)[:2000] + "…"
-            else:
-                result_str = str(result)
-
-            log.debug("run_analysis(%s): %s → %s", view_name, expression[:80], result_str[:200])
+            value = run_pandas_analysis(expression, rows)
             return {
                 "view":       view_name,
                 "expression": expression,
-                "result":     result_str,
-                "rows_used":  len(df),
+                "result":     format_result(value),
+                "rows_used":  len(rows),
             }
-
         except Exception as exc:
+            cols = list(rows[0].keys()) if rows else []
             raise ToolError(
                 f"Analysis failed for expression {expression!r}: {exc}. "
-                f"Available columns: {list(df.columns)}"
+                f"Available columns: {cols}. Note: numeric columns are already "
+                f"coerced to numbers — do NOT strip '%' or call astype yourself."
             ) from exc
 
     def _tool_emit_domain_result(self, inp: dict) -> dict:

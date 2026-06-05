@@ -48,6 +48,16 @@ to fill them. You have access to:
   - run_analysis: run pandas on fetched data to verify values
   - emit_qa_result: submit your supplementary KPIs
 
+IMPORTANT — efficiency rules:
+  • All view data is ALREADY LOADED. You may call run_analysis directly on any
+    view without fetch_view_data first. Numeric columns (incl. '%' values) are
+    already coerced to numbers — do NOT strip '%' or call astype; just aggregate.
+  • run_analysis accepts multi-statement code, but you rarely need it. Keep each
+    analysis to one short expression. Do not loop over many views — focus on the
+    few highest-value gaps.
+  • You MUST call emit_qa_result before finishing — even if you find zero gaps
+    (return an empty supplementary_kpis list). Never end without emitting.
+
 Gap detection checklist:
   1. UNUSED VIEWS: views in available_views not used by any KPI
      → Could these views produce valuable KPIs?
@@ -166,7 +176,8 @@ class QAAgent(BaseAgent):
         workbook_luid: workbook luid
     """
 
-    def __init__(self, connector: TableauConnector, workbook_luid: str) -> None:
+    def __init__(self, connector: TableauConnector, workbook_luid: str,
+                 view_cache: dict[str, list[dict]] | None = None) -> None:
         super().__init__(
             model          = _MODEL,
             tools          = _QA_TOOLS,
@@ -176,7 +187,8 @@ class QAAgent(BaseAgent):
         )
         self._connector      = connector
         self._workbook_luid  = workbook_luid
-        self._row_cache: dict[str, list[dict]] = {}
+        # Seed with profiler-fetched data — QA can run_analysis immediately, no re-fetch
+        self._row_cache: dict[str, list[dict]] = dict(view_cache) if view_cache else {}
         self._emit_result: dict | None = None
 
     def review(
@@ -264,45 +276,45 @@ class QAAgent(BaseAgent):
 
     def _tool_fetch_view_data(self, inp: dict) -> dict:
         view_name = inp["view_name"]
-        try:
-            rows = self._connector.get_view_data_by_name(
-                workbook_luid = self._workbook_luid,
-                view_name     = view_name,
-                max_rows      = 0,
-            )
-        except Exception as exc:
-            raise ToolError(f"Failed to fetch {view_name!r}: {exc}") from exc
-
-        self._row_cache[view_name] = rows
+        # Reuse profiler-seeded data when present
+        rows = self._row_cache.get(view_name)
+        if rows is None:
+            try:
+                rows = self._connector.get_view_data_by_name(
+                    workbook_luid = self._workbook_luid,
+                    view_name     = view_name,
+                    max_rows      = 0,
+                )
+            except Exception as exc:
+                raise ToolError(f"Failed to fetch {view_name!r}: {exc}") from exc
+            self._row_cache[view_name] = rows
         sample_limit = len(rows) if len(rows) <= 500 else 200
         return summarise_rows(rows, max_rows=sample_limit)
 
     def _tool_run_analysis(self, inp: dict) -> dict:
-        import pandas as pd
+        from agents.analysis_sandbox import run_pandas_analysis, format_result
 
         view_name  = inp["view_name"]
         expression = inp["expression"].strip()
         rows       = self._row_cache.get(view_name)
 
-        if not rows:
-            raise ToolError(f"Fetch {view_name!r} first before running analysis.")
+        # Data is pre-loaded from the profiler; fetch lazily if somehow missing
+        if rows is None:
+            try:
+                rows = self._connector.get_view_data_by_name(
+                    workbook_luid=self._workbook_luid, view_name=view_name, max_rows=0,
+                )
+                self._row_cache[view_name] = rows
+            except Exception as exc:
+                raise ToolError(f"No data for {view_name!r}: {exc}") from exc
 
-        df = pd.DataFrame(rows)  # noqa: F841
         try:
-            import numpy as np  # noqa: PLC0415
-            _safe_builtins = {
-                "float": float, "int": int, "str": str, "bool": bool,
-                "len": len, "sum": sum, "round": round, "abs": abs,
-                "min": min, "max": max, "list": list, "tuple": tuple,
-                "dict": dict, "set": set, "range": range,
-                "enumerate": enumerate, "zip": zip,
-                "True": True, "False": False, "None": None,
-                "isinstance": isinstance,
-            }
-            result = eval(expression, {"__builtins__": _safe_builtins, "pd": pd, "np": np}, {"df": df})  # noqa: S307
-            result_str = result.to_string() if hasattr(result, "to_string") else str(result)
-            if len(result_str) > 2000:
-                result_str = result_str[:2000] + "…"
-            return {"view": view_name, "expression": expression, "result": result_str, "rows_used": len(df)}
+            value = run_pandas_analysis(expression, rows)
+            return {"view": view_name, "expression": expression,
+                    "result": format_result(value), "rows_used": len(rows)}
         except Exception as exc:
-            raise ToolError(f"Analysis failed: {exc}. Columns: {list(df.columns)}") from exc
+            cols = list(rows[0].keys()) if rows else []
+            raise ToolError(
+                f"Analysis failed: {exc}. Columns: {cols}. "
+                f"Numeric columns are already coerced — don't strip '%' or astype."
+            ) from exc

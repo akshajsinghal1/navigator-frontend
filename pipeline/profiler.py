@@ -498,6 +498,18 @@ def detect_flags(views: dict[str, list[dict]], columns: list[ColumnProfile],
             flags.append(QualityFlag("info", "single_row_view", v,
                 f"View '{v}' has a single row — it is a scalar KPI, not a series. Use kpi_card/gauge."))
 
+    # measureless views: only categorical columns, no numeric measure.
+    # A heatmap/line/bar needs a numeric intensity — these can only be a
+    # category-coded matrix (e.g. Risk Category) or a count.
+    for v, rows in views.items():
+        cps = col_by_view.get(v, [])
+        if rows and not any(c.role == "measure" for c in cps):
+            cat_cols = [c.name for c in cps if c.role == "dimension"]
+            flags.append(QualityFlag("warn", "no_measure_view", v,
+                f"View '{v}' has NO numeric measure (only categorical: {cat_cols}). "
+                f"Do NOT use heatmap/line/bar that needs an intensity value. Use a "
+                f"category-coded chart (e.g. count of rows per category) or a table."))
+
     # degenerate breakdown: 2-dim view where measure is constant across one dim within the other
     for v, rows in views.items():
         cps = col_by_view.get(v, [])
@@ -670,6 +682,10 @@ def format_profile_for_agent(profile: WorkbookProfile) -> str:
         L.append("  2. DEGENERATE breakdowns — do NOT break the measure down by this dimension:")
         for f in by["degenerate_breakdown"]:
             L.append(f"       {f.message}")
+    if by.get("no_measure_view"):
+        names = ", ".join(f"'{f.where}'" for f in by["no_measure_view"])
+        L.append(f"  2b. MEASURELESS views (no numeric value) — do NOT use heatmap/line/bar; "
+                 f"use a count or table: {names}")
     if by.get("suspicious_uniform"):
         spots = ", ".join(f.where for f in by["suspicious_uniform"])
         L.append(f"  3. NEAR-UNIFORM categories — do NOT headline a 'largest/top' segment (it's noise): {spots}")

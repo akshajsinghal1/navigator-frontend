@@ -943,15 +943,6 @@ function buildOption(
 
   // ── Heatmap chart ────────────────────────────────────────────────────────
   if (ctype === "heatmap_chart") {
-    // x-axis: first categorical dimension, y-axis: second categorical dimension
-    // breakdown_by sets the y-axis; fall back to yCol when breakdown_by not set
-    const byCol  = kpi.chart?.breakdown_by
-      ? findColumn(rows, kpi.chart.breakdown_by)
-      : (yCol !== xCol ? yCol : null);
-    if (!byCol || !xCol) return null;
-    const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
-    const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
-    // ── Find intensity column and value mapper ───────────────────────────
     const cols = rows.length ? Object.keys(rows[0]) : [];
 
     // Severity mappings for categorical columns (HIGH→3, RED→3, etc.)
@@ -964,6 +955,11 @@ function buildOption(
       const s = String(v ?? "").toLowerCase().trim();
       return SEVERITY_MAP[s] ?? null;
     };
+
+    // breakdown_by sets the y-axis; fall back to yCol when breakdown_by not set
+    const byCol  = kpi.chart?.breakdown_by
+      ? findColumn(rows, kpi.chart.breakdown_by)
+      : (yCol !== xCol ? yCol : null);
 
     // Find intensity: prefer numeric column, then severity-mapped categorical
     const intensityCol = cols.find(c =>
@@ -980,6 +976,50 @@ function buildOption(
       if (severityCol)  return severityScore(row[severityCol]);
       return 1; // count-per-cell fallback
     };
+
+    // ── Fallback: when a valid 2-D grid can't form (no 2nd dimension, or no
+    // data cells), render a horizontal bar of xCol vs mean intensity/severity/
+    // count — so the tile ALWAYS shows something instead of "No chart".
+    const barFallback = () => {
+      if (!xCol) return null;
+      const groups = new Map<string, number[]>();
+      for (const r of rows) {
+        const k = String(r[xCol!] ?? "");
+        if (!k) continue;
+        const v = getVal(r);
+        if (v === null) continue;
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(v);
+      }
+      const bars = [...groups.entries()]
+        .map(([k, vs]) => ({ x: k, y: vs.reduce((a, b) => a + b, 0) / vs.length }))
+        .sort((a, b) => b.y - a.y);
+      if (!bars.length) return null;
+      return {
+        backgroundColor: "transparent",
+        animationDuration: compact ? 200 : 600,
+        tooltip: compact ? { show: false } : { ...tt, trigger: "axis", axisPointer: { type: "shadow" } },
+        grid: { containLabel: true, left: "2%", right: "4%", top: 8, bottom: 8 },
+        xAxis: { ...(compact ? COMPACT_AXIS_Y : AXIS_BASE), type: "value" },
+        yAxis: {
+          ...(compact ? COMPACT_AXIS_Y : AXIS_BASE), type: "category",
+          data: bars.map(b => b.x), inverse: true,
+          axisLabel: { color: compact ? palette.ink4 : palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: compact ? 8 : 10 },
+        },
+        series: [{
+          type: "bar", data: bars.map(b => b.y), barMaxWidth: 22,
+          itemStyle: { color: palette.accent, borderRadius: [0, 3, 3, 0] },
+        }],
+      };
+    };
+
+    if (!byCol || !xCol) return barFallback();
+    const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
+    const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
+
+    // If the 2nd dimension is degenerate (only 1 distinct value), a heatmap row
+    // is pointless → fall back to a bar of the primary dimension.
+    if (yVals.length < 2 || xVals.length < 2) return barFallback();
 
     // Build cell map
     const cellMap = new Map<string, number[]>();
@@ -998,7 +1038,7 @@ function buildOption(
       const [xi, yi] = key.split(",").map(Number);
       return [xi, yi, vals.reduce((a, b) => a + b, 0) / vals.length];
     });
-    if (!rawHeatData.length) return null;
+    if (!rawHeatData.length) return barFallback();
 
     // Smart axis assignment: put the SHORTER dimension on x-axis so cells are wider.
     // If facilities (xVals) outnumber departments (yVals), swap them.
