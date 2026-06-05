@@ -714,6 +714,52 @@ def format_profile_for_agent(profile: WorkbookProfile) -> str:
 # Returns ONLY what the chart agent needs for one specific view — not the full
 # WorkbookProfile. Keeps chart agent prompts small and focused.
 
+def get_view_quality_map(profile: WorkbookProfile) -> dict[str, dict]:
+    """
+    Build a compact view-quality index for ALL data views.
+
+    Used by the orchestrator at Phase A (domain planning) so it knows the
+    grain, entity dimensions, and quality flags of every view BEFORE it
+    designs KPI assignments — not after domain agents run.
+
+    Keyed by view name. Each value is the minimum needed for planning:
+        grain                   "scalar" | "series"
+        is_scalar               bool — kpi_card/gauge only if true
+        entity_dims             {col: {distinct: N}} — strong breakdown candidates
+        degenerate_breakdowns   list of human-readable messages
+        flag_codes              list of flag code strings (compact signal set)
+    """
+    col_by_view: dict[str, list[ColumnProfile]] = {}
+    for c in profile.columns:
+        col_by_view.setdefault(c.view, []).append(c)
+
+    entity_by_view: dict[str, dict[str, dict]] = {}
+    for e in profile.entities:
+        for ref in e.columns:
+            if "::" not in ref:
+                continue
+            vname, cname = ref.split("::", 1)
+            entity_by_view.setdefault(vname, {})[cname] = {
+                "distinct": len(e.canonical_values)
+            }
+
+    result: dict[str, dict] = {}
+    for vname, vs in profile.views.items():
+        if vs.get("rows", 0) == 0:
+            continue  # empty / dashboard container — skip
+        flags     = [f for f in profile.flags if f.where == vname or f.where.startswith(f"{vname}::")]
+        degen     = [f.message for f in flags if f.code == "degenerate_breakdown"]
+        flag_codes = list({f.code for f in flags})
+        result[vname] = {
+            "grain":                vs.get("grain", "unknown"),
+            "is_scalar":            vs.get("grain") == "scalar",
+            "entity_dims":          entity_by_view.get(vname, {}),
+            "degenerate_breakdowns": degen,
+            "flag_codes":           flag_codes,
+        }
+    return result
+
+
 def get_view_profile(view_name: str, profile: WorkbookProfile) -> dict:
     """
     Extract a compact, chart-agent-ready profile for a specific view.

@@ -278,7 +278,28 @@ Use them in NEW ways to surface NEW insight. Several techniques:
    A "Total Sales" KPI for a CFO is a "Revenue Forecast Gap"; for a Sales Manager
    it's "Quota Coverage". Same field, totally different KPI definition + meaning.
 
-Step 0 — OBEY THE VERIFIED DATA PROFILE (highest priority)
+Step 0a — READ VIEW_QUALITY BEFORE DESIGNING DOMAINS
+Your input includes VIEW_QUALITY — a compact, deterministic index of every data view.
+Before assigning any view to a domain, check its entry:
+
+  is_scalar = true
+    → This view has ONE row. Use it only for kpi_card or gauge_chart KPIs.
+      Do NOT design a time-series, breakdown, or trend KPI from a scalar view.
+
+  degenerate_breakdowns = [...]
+    → These dimension columns do NOT carry meaningful signal within this view.
+      Do NOT use them as breakdown_by in any KPI design from this view.
+      Using a degenerate breakdown produces a misleading chart.
+
+  entity_dims = {"Facility Name": {"distinct": 5}}
+    → This is a verified entity dimension. It IS a good breakdown candidate.
+      If designing a KPI "by Facility" from this view, use this column.
+
+  flag_codes
+    → "suspicious_uniform" → do NOT headline a 'top segment' from this view.
+    → "high_null"          → treat this view's data as unreliable for primary KPIs.
+
+Step 0b — OBEY THE VERIFIED DATA PROFILE (highest priority)
 The input contains VERIFIED_DATA_PROFILE — deterministic ground truth computed
 from the real data. It is more authoritative than view names or your assumptions.
 Its "MANDATORY DATA-QUALITY RULES" are HARD constraints, not suggestions:
@@ -494,6 +515,9 @@ class OrchestratorAgent(BaseAgent):
         self._view_cache      = view_cache or {}
         self._profile         = profile    # WorkbookProfile — source for ViewProfile slices
 
+        # ── Run metrics: accumulated throughout the pipeline, saved at the end ──
+        self._run_metrics: dict[str, Any] = {}
+
         # Semaphore: cap concurrent domain agents to avoid Gemini rate limits.
         # With multi-phase Phase-A, the orchestrator may issue 8-10 analyze_domain
         # calls per turn. Without a cap that's 8-10 simultaneous Gemini sessions,
@@ -559,10 +583,33 @@ class OrchestratorAgent(BaseAgent):
 
         n_views  = len(self._available_views) if self._available_views else 0
         n_fields = len(reachable_fields_summary)
-        # n_views / n_fields are passed as informational context only — no hardcoded minimums
+
+        # ── View quality map: compact per-view facts for domain planning ───────
+        # Gives the orchestrator grain, entity dims, and quality flags for every
+        # view BEFORE it designs KPI assignments — so bad designs don't enter.
+        view_quality: dict = {}
+        if self._profile is not None:
+            try:
+                from pipeline.profiler import get_view_quality_map
+                view_quality = get_view_quality_map(self._profile)
+            except Exception as exc:
+                log.debug("Could not build view_quality_map: %s", exc)
+
+        # ── Thin metric: did orchestrator receive view quality? ────────────────
+        self._run_metrics["orchestrator_had_view_quality"] = bool(view_quality)
+        self._run_metrics["view_quality_views_covered"]    = len(view_quality)
+        scalar_views = sum(1 for v in view_quality.values() if v.get("is_scalar"))
+        degen_views  = sum(1 for v in view_quality.values() if v.get("degenerate_breakdowns"))
+        self._run_metrics["scalar_views_in_quality_map"]     = scalar_views
+        self._run_metrics["degenerate_views_in_quality_map"] = degen_views
+        log.info(
+            "View quality map: %d views (%d scalar, %d with degenerate breakdowns)",
+            len(view_quality), scalar_views, degen_views,
+        )
 
         user_msg = json.dumps({
             "VERIFIED_DATA_PROFILE": eda_text or None,
+            "VIEW_QUALITY":          view_quality or None,   # ← new: per-view planning facts
             "workbook_inventory":  filtered_inventory,
             "available_api_views": self._available_views or None,
             "reachable_fields":    reachable_fields_summary or None,
@@ -593,6 +640,8 @@ class OrchestratorAgent(BaseAgent):
             log.error("Orchestrator did not call emit_intelligence_config")
             raise RuntimeError("Orchestrator failed to emit config — check logs")
 
+        # Finalise run metrics before returning
+        self._run_metrics["kpis_assembled"] = len(self._domain_results)
         return self._assemble_config(self._config_emit, filtered_inventory)
 
     # ── tool execution ────────────────────────────────────────────────────────

@@ -196,6 +196,7 @@ class QAAgent(BaseAgent):
         config: IntelligenceConfig,
         eda: dict[str, Any],
         available_views: list[str],
+        profiler_flags: list[dict] | None = None,   # quality flags from WorkbookProfile
     ) -> dict[str, Any]:
         """
         Review the assembled config and find gaps.
@@ -234,21 +235,40 @@ class QAAgent(BaseAgent):
             for pv in config.personas
         ]
 
+        # ── Distil profiler flags into actionable QA context ──────────────────
+        # Group flags by type so QA can validate coverage against known issues
+        # rather than re-discovering them with run_analysis.
+        flag_summary: dict[str, list[str]] = {}
+        for f in (profiler_flags or []):
+            flag_summary.setdefault(f.get("code", "unknown"), []).append(f.get("where", ""))
+
+        # Build KPI → view mapping so QA can cross-reference flags with coverage
+        kpi_view_map = {
+            k.name: k.l1.view_name
+            for pv in config.personas
+            for sec in pv.dashboard_sections
+            for k in sec.kpis
+            if k.l1 and k.l1.view_name
+        }
+
         user_msg = json.dumps({
             "task": (
-                "Review the generated Intelligence Config and find important gaps. "
-                "Fetch unused views, run analysis on them, and propose supplementary KPIs. "
-                "Only propose KPIs you have verified with run_analysis. "
+                "Review the generated Intelligence Config against the profiler_flags. "
+                "The flags are VERIFIED FACTS about the data — use them as your validation source. "
+                "For each flag type, check whether the config already handles it. "
+                "If a degenerate_breakdown flag exists for a view, check whether that breakdown "
+                "appears in any KPI for that view — if yes, that is a gap. "
+                "If a suspicious_uniform flag exists, check whether any KPI headlines 'top segment'. "
+                "You may use run_analysis (at most 3-4 calls) to verify specific values. "
                 "Call emit_qa_result when done."
             ),
-            "existing_kpis": existing_kpi_names,
-            "personas": personas_summary,
-            "unused_views": unused_views[:15],           # most important unused views
+            "profiler_flags": flag_summary,          # ← verified facts, not guesses
+            "kpi_view_map":   kpi_view_map,           # ← which KPIs use which views
+            "existing_kpis":  existing_kpi_names,
+            "personas":       personas_summary,
+            "unused_views":   unused_views[:15],
             "all_views_used": list(used_views),
-            "unused_dimensions": unused_dims[:20],       # dims not used as breakdown
-            "all_measures_available": all_measures[:30], # measures to check
             "available_views": available_views[:30],
-            "eda_summary": eda.get("summary", {}),
         }, indent=2)
 
         outcome = self.run(user_msg)

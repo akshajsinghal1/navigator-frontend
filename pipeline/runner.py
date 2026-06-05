@@ -341,35 +341,75 @@ class PipelineRunner:
             config = orchestrator.run_pipeline(filtered, eda=eda, profile_text=profile_text)
 
             # ── step 7: QA agent — review config, find gaps, add missing KPIs ──
+            qa_emitted    = False
+            qa_iterations = 0
+            profiler_flags: list = []
             try:
                 from agents.qa_agent import QAAgent
                 from agents.orchestrator import _infer_persona_level
 
                 log.info("Running QA agent to review config and find gaps")
                 qa = QAAgent(connector=conn, workbook_luid=workbook_luid, view_cache=view_data_cache)
+                # Pass profiler flags so QA validates against known facts
+                profiler_flags = (
+                    [{"code": f.code, "where": f.where, "message": f.message}
+                     for f in profile.flags]
+                    if profile else []
+                )
                 qa_result = qa.review(
                     config          = config,
                     eda             = eda or {},
                     available_views = available_views,
+                    profiler_flags  = profiler_flags,   # ← Change 3
                 )
 
                 supplementary = qa_result.get("supplementary_kpis", [])
                 gaps          = qa_result.get("gaps_found", [])
+                qa_iterations = qa_result.get("iterations", 0)
+                qa_emitted    = True
 
                 if gaps:
                     log.info("QA agent found %d gaps: %s", len(gaps), gaps[:3])
-
                 if supplementary:
                     log.info("QA agent proposing %d supplementary KPIs", len(supplementary))
                     config = _inject_supplementary_kpis(config, supplementary)
 
             except Exception as exc:
-                # QA agent failure should not abort the pipeline
                 log.warning("QA agent failed (non-fatal): %s", exc)
+                qa_iterations = 0
+                qa_emitted    = False
 
+        # ── Collect run metrics and save alongside config ──────────────────────
         elapsed = time.time() - start
-        log.info("=== Pipeline complete in %.1fs ===", elapsed)
+        run_metrics: dict = {
+            "elapsed_seconds":           round(elapsed, 1),
+            "profiler_ran":              profile is not None,
+            "profiler_entities":         len(profile.entities) if profile else 0,
+            "profiler_flags":            len(profile.flags)    if profile else 0,
+            "orchestrator_had_view_quality": getattr(orchestrator, "_run_metrics", {}).get("orchestrator_had_view_quality", False),
+            "view_quality_views_covered":    getattr(orchestrator, "_run_metrics", {}).get("view_quality_views_covered", 0),
+            "scalar_views_flagged":          getattr(orchestrator, "_run_metrics", {}).get("scalar_views_in_quality_map", 0),
+            "degenerate_views_flagged":      getattr(orchestrator, "_run_metrics", {}).get("degenerate_views_in_quality_map", 0),
+            "chart_agents_had_view_profile": sum(1 for _ in getattr(orchestrator, "_chart_specs", {}).values()),
+            "qa_had_profiler_flags":         bool(profiler_flags) if not offline else False,
+            "qa_emitted":                    qa_emitted,
+            "qa_iterations":                 qa_iterations,
+            "personas":                      len(config.personas),
+            "kpis_assembled":                sum(len(s.kpis) for pv in config.personas for s in pv.dashboard_sections),
+        }
+        log.info("Run metrics: %s", run_metrics)
 
+        # Save metrics next to the config (same folder)
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            metrics_path = _Path("output") / "run_metrics_latest.json"
+            metrics_path.parent.mkdir(exist_ok=True)
+            metrics_path.write_text(_json.dumps(run_metrics, indent=2), encoding="utf-8")
+        except Exception as exc:
+            log.debug("Could not save run_metrics: %s", exc)
+
+        log.info("=== Pipeline complete in %.1fs ===", elapsed)
         return config
 
     # ── inventory extraction ──────────────────────────────────────────────────
