@@ -215,6 +215,9 @@ function monthYearToNum(s: string): number {
   // "2026"
   const yr = s.match(/^(\d{4})$/);
   if (yr) return parseInt(yr[1]) * 100;
+  // Bare integer (day number: "21", "26" etc.) — sort numerically
+  const bare = parseInt(s);
+  if (!isNaN(bare) && String(bare) === s.trim()) return bare;
   return 0;
 }
 
@@ -640,7 +643,7 @@ function buildOption(
             : { type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
                 textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 } },
           grid: compactGrid
-            ? { ...compactGrid, top: compact ? 18 : 12 }
+            ? { ...compactGrid, top: compact ? Math.max(18, Math.ceil(series.length / 5) * 14) : 12 }
             : { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 32 },
           xAxis: {
             ...AXIS_BASE, type: "category", data: categories,
