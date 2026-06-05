@@ -285,6 +285,45 @@ class PipelineRunner:
                     views_meta = conn.list_views(workbook_luid)
                     available_views = [v["name"] for v in views_meta]
 
+            # ── step 5.5: DATA PROFILER — verified ground truth for the agents ──
+            # Fetches full data for every view ONCE, profiles it deterministically
+            # (entities, relationships, quality flags), and feeds compact verified
+            # facts to the orchestrator. Replaces the thin structural EDA feed.
+            profile = None
+            profile_text = ""
+            view_data_cache: dict[str, list[dict]] = {}
+            if not offline:
+                try:
+                    from pipeline.profiler import profile_workbook, format_profile_for_agent
+                    src_views = manifest.views if manifest else []
+                    if src_views:
+                        for v in src_views:
+                            if not v.columns:
+                                view_data_cache[v.name] = []
+                                continue
+                            try:
+                                view_data_cache[v.name] = conn.fetch_view_csv(v.luid, max_rows=100000) or []
+                            except Exception:
+                                view_data_cache[v.name] = []
+                        total_v = len(src_views)
+                    else:
+                        for vn in available_views:
+                            try:
+                                view_data_cache[vn] = conn.get_view_data_by_name(workbook_luid, vn) or []
+                            except Exception:
+                                view_data_cache[vn] = []
+                        total_v = len(available_views)
+
+                    profile = profile_workbook(view_data_cache, total_views=total_v)
+                    profile_text = format_profile_for_agent(profile)
+                    log.info(
+                        "Profiler: %d entities, %d relationships, %d quality flags",
+                        len(profile.entities), len(profile.relationships), len(profile.flags),
+                    )
+                except Exception as exc:
+                    log.warning("Profiler failed (continuing without it): %s", exc)
+                    profile = None
+
             # ── step 6: run orchestrator (uses same `conn` — VdsClient) ───────
             from agents.orchestrator import OrchestratorAgent
 
@@ -297,7 +336,7 @@ class PipelineRunner:
             )
 
             log.info("Running orchestrator agent")
-            config = orchestrator.run_pipeline(filtered, eda=eda)
+            config = orchestrator.run_pipeline(filtered, eda=eda, profile_text=profile_text)
 
             # ── step 7: QA agent — review config, find gaps, add missing KPIs ──
             try:

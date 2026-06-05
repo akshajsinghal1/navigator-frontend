@@ -607,3 +607,88 @@ def profile_workbook(views_raw: dict[str, list[dict]], total_views: Optional[int
         relationships=relationships,
         flags=flags,
     )
+
+
+# ── agent-facing formatter (compact, enforceable) ───────────────────────────────
+
+def format_profile_for_agent(profile: WorkbookProfile) -> str:
+    """
+    Render the profile as a compact, enforceable fact sheet for the orchestrator.
+    This REPLACES the old structural EDA feed. It is verified ground truth — agents
+    must design from this, not from raw view contents. Stays small (a few KB) by
+    summarizing statistics rather than dumping rows.
+    """
+    L: list[str] = []
+    L.append("=== VERIFIED WORKBOOK PROFILE (ground truth — design from THIS) ===")
+
+    # Entities
+    if profile.entities:
+        L.append("\nENTITIES (canonical dimensions shared across views — use these EXACT labels):")
+        for e in profile.entities:
+            vals = e.canonical_values
+            shown = ", ".join(vals[:15]) + (f" …(+{len(vals)-15})" if len(vals) > 15 else "")
+            L.append(f"  - {e.name}: {len(vals)} values [{shown}]")
+            if e.aliases:
+                al = "; ".join(f"{k!r}->{v!r}" for k, v in list(e.aliases.items())[:8])
+                L.append(f"      normalize variants to canonical: {al}")
+
+    # Per-view structure
+    L.append("\nVIEWS (structure + how each may be charted):")
+    for vname, vs in profile.views.items():
+        if vs.get("rows", 0) == 0:
+            continue
+        if vs.get("grain") == "scalar":
+            meas = ", ".join(vs.get("measures", []))
+            L.append(f"  - '{vname}' [SCALAR single value] measures: [{meas}] -> kpi_card/gauge ONLY")
+        else:
+            dims = ", ".join(vs.get("dimensions", []))
+            meas = ", ".join(vs.get("measures", []))
+            L.append(f"  - '{vname}' [series] dims:[{dims}] measures:[{meas}]")
+
+    # Relationships
+    real = [r for r in profile.relationships if r.kind in ("sum", "ratio")]
+    cand = [r for r in profile.relationships if r.kind.endswith("candidate")]
+    if real:
+        L.append("\nVERIFIED RELATIONSHIPS (safe to use in KPI definitions):")
+        for r in real:
+            L.append(f"  - {r.expr}")
+    if cand:
+        L.append("\nCANDIDATE RELATIONSHIPS (plausible — verify before relying on):")
+        for r in cand:
+            L.append(f"  - {r.expr}")
+
+    # Mandatory rules from flags
+    by: dict[str, list[QualityFlag]] = {}
+    for f in profile.flags:
+        by.setdefault(f.code, []).append(f)
+
+    L.append("\nMANDATORY DATA-QUALITY RULES (violating these produces WRONG output):")
+    if by.get("single_row_view"):
+        names = ", ".join(f"'{f.where}'" for f in by["single_row_view"])
+        L.append(f"  1. SCALAR views — chart as kpi_card/gauge, NEVER line/bar/area: {names}")
+    if by.get("degenerate_breakdown"):
+        L.append("  2. DEGENERATE breakdowns — do NOT break the measure down by this dimension:")
+        for f in by["degenerate_breakdown"]:
+            L.append(f"       {f.message}")
+    if by.get("suspicious_uniform"):
+        spots = ", ".join(f.where for f in by["suspicious_uniform"])
+        L.append(f"  3. NEAR-UNIFORM categories — do NOT headline a 'largest/top' segment (it's noise): {spots}")
+    if by.get("inconsistent_labels"):
+        ents = ", ".join(f.where for f in by["inconsistent_labels"])
+        L.append(f"  4. INCONSISTENT labels — use the canonical entity forms above: {ents}")
+    if by.get("unreconciled_rate"):
+        rs = ", ".join(f"'{f.where}'" for f in by["unreconciled_rate"])
+        L.append(f"  5. UNRECONCILED rates — state plainly, do NOT assert a specific ratio: {rs}")
+    if by.get("high_null"):
+        ns = ", ".join(f"'{f.where}'" for f in by["high_null"][:8])
+        L.append(f"  6. HIGH-NULL columns — unreliable, avoid as primary metrics: {ns}")
+
+    # Exact column names (kills field-name invention)
+    L.append("\nEXACT COLUMN NAMES (use verbatim — do NOT invent, reformat, or underscore):")
+    seen_cols: dict[str, list[str]] = {}
+    for c in profile.columns:
+        seen_cols.setdefault(c.view, []).append(c.name)
+    for vname, cols in seen_cols.items():
+        L.append(f"  '{vname}': {cols}")
+
+    return "\n".join(L)

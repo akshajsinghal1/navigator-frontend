@@ -272,8 +272,29 @@ Use them in NEW ways to surface NEW insight. Several techniques:
    A "Total Sales" KPI for a CFO is a "Revenue Forecast Gap"; for a Sales Manager
    it's "Quota Coverage". Same field, totally different KPI definition + meaning.
 
+Step 0 — OBEY THE VERIFIED DATA PROFILE (highest priority)
+The input contains VERIFIED_DATA_PROFILE — deterministic ground truth computed
+from the real data. It is more authoritative than view names or your assumptions.
+Its "MANDATORY DATA-QUALITY RULES" are HARD constraints, not suggestions:
+  • SCALAR (single-row) views → design as kpi_card or gauge_chart ONLY. Never a
+    line/bar/area chart — there is no series to plot, the chart will be empty.
+  • DEGENERATE breakdowns → if the profile says a measure does NOT vary across a
+    dimension, you may NOT chart that measure broken down by that dimension. Pick a
+    dimension the profile shows real variation on, or omit the breakdown.
+  • NEAR-UNIFORM categories → do NOT design a KPI that headlines a "largest" /
+    "top" segment for these — the distribution is noise/likely synthetic.
+  • CANONICAL labels → when the profile lists normalized aliases, use the canonical
+    form, never the raw variant.
+  • EXACT column names → use the profile's column names verbatim. Never invent,
+    prettify, or underscore them.
+  • VERIFIED RELATIONSHIPS → you may rely on these in KPI definitions. CANDIDATE
+    relationships must be treated as unconfirmed.
+  • UNRECONCILED rates → present them plainly; do not assert they equal a specific
+    ratio of other measures.
+If the profile and a view name disagree, the profile wins.
+
 Step 1 — UNDERSTAND THE BUSINESS
-  - Read field names, formulas, EDA, reachable_fields list
+  - Read the VERIFIED_DATA_PROFILE first, then field names, formulas, reachable_fields
   - Notice: which existing views look LAZY (just one field + L1) vs RICH
     (multiple fields with breakdowns)? Rich views give you raw material.
 
@@ -483,20 +504,25 @@ class OrchestratorAgent(BaseAgent):
         self,
         filtered_inventory: dict[str, Any],
         eda: dict[str, Any] | None = None,
+        profile_text: str = "",
     ) -> IntelligenceConfig:
         """
         Run the full orchestration pipeline.
 
         Args:
             filtered_inventory: output of semantic_filter.filter_inventory()
-            eda               : optional EDA pre-analysis dict from pipeline.eda.run_eda()
+            eda               : optional EDA pre-analysis dict (legacy structural feed)
+            profile_text      : verified data-profile fact sheet from pipeline.profiler.
+                                When present, this is the PRIMARY ground truth the
+                                orchestrator must design from (replaces the thin EDA).
 
         Returns:
             IntelligenceConfig — the complete, assembled config
         """
         from pipeline.eda import format_eda_for_agent  # late import
 
-        eda_text = format_eda_for_agent(eda) if eda else ""
+        # Prefer the verified profile; fall back to structural EDA only if absent.
+        eda_text = profile_text or (format_eda_for_agent(eda) if eda else "")
 
         def _json_default(obj: Any) -> Any:
             if isinstance(obj, datetime):
@@ -526,8 +552,8 @@ class OrchestratorAgent(BaseAgent):
         # n_views / n_fields are passed as informational context only — no hardcoded minimums
 
         user_msg = json.dumps({
+            "VERIFIED_DATA_PROFILE": eda_text or None,
             "workbook_inventory":  filtered_inventory,
-            "eda_pre_analysis":    eda_text or None,
             "available_api_views": self._available_views or None,
             "reachable_fields":    reachable_fields_summary or None,
             "workbook_scale": {
@@ -540,13 +566,14 @@ class OrchestratorAgent(BaseAgent):
                 ),
             },
             "task": (
-                "Analyze this Tableau workbook. Identify the single business objective and "
-                "design intelligence that fully covers every available view — use as many domains "
-                "and personas as the data genuinely warrants, and use as many analyze_domain "
-                "turns as needed (Phase A) to cover all views before moving to chart specs (Phase B) "
-                "and emit (Phase C). "
-                "CRITICAL — use EXACT 'name' values from 'reachable_fields' for ALL field names. "
-                "When calling analyze_domain, only pass view names from 'available_api_views'."
+                "Analyze this Tableau workbook. The VERIFIED_DATA_PROFILE is computed ground "
+                "truth — design from it, and OBEY its MANDATORY DATA-QUALITY RULES exactly "
+                "(scalar views -> kpi_card; never break a measure down by a degenerate dimension; "
+                "never headline a near-uniform segment; use canonical labels; use EXACT column names). "
+                "Identify the single business objective and design intelligence that covers every "
+                "available view — as many domains/personas as the data warrants, across as many "
+                "Phase-A analyze_domain turns as needed, then chart specs (Phase B), then emit (Phase C). "
+                "Use EXACT column names from the profile / reachable_fields — never invent or reformat them."
             ),
         }, indent=2, default=_json_default)
 
