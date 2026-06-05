@@ -435,9 +435,10 @@ interface KpiTileProps {
   workbookId: string;
   period:     Period;
   onExpand:   (kpi: NavigatorKPI) => void;
+  colSpan?:   number;   // 1 = half-width, 2 = full-width
 }
 
-function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
+function KpiTile({ kpi, workbookId, period, onExpand, colSpan = 1 }: KpiTileProps) {
   const { palette } = useChartTheme();
   const [hovered, setHovered] = useState(false);
 
@@ -595,7 +596,7 @@ function KpiTile({ kpi, workbookId, period, onExpand }: KpiTileProps) {
             kpi={kpi}
             rows={allRows.length ? allRows : (kpi.raw_data as Record<string, unknown>[] ?? [])}
             loading={loading}
-            height={110}
+            height={colSpan > 1 ? 160 : 110}  // full-width tiles get taller charts
             maxPoints={20}
             compact
           />
@@ -1079,6 +1080,7 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
                   workbookId={workbookId}
                   period={period}
                   onExpand={handleExpand}
+                  colSpan={kpiColSpan(kpi, index, section.kpis.length)}
                 />
               </div>
             ))}
