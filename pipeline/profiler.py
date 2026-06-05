@@ -121,20 +121,45 @@ def name_is_rate(name: str) -> bool:
     return "%" in str(name) or bool(set(norm.split()) & _RATE_WORDS)
 
 
-def str_sim(a: str, b: str) -> float:
-    """Generic string similarity combining sequence ratio + token overlap + prefix."""
-    na, nb = norm_label(a), norm_label(b)
-    if not na or not nb:
-        return 0.0
-    if na == nb:
-        return 1.0
-    seq = SequenceMatcher(None, na, nb).ratio()
-    ta, tb = set(na.split()), set(nb.split())
-    tok = len(ta & tb) / len(ta | tb) if (ta | tb) else 0.0
-    # abbreviation/prefix: every token of the shorter is a prefix of a token in the longer
-    short, long = (ta, tb) if len(na) <= len(nb) else (tb, ta)
-    pref = all(any(lt.startswith(stk) or stk.startswith(lt) for lt in long) for stk in short) if short else False
-    return max(seq, tok, 0.9 if pref else 0.0)
+# Generic connector stopwords (language-level, not domain) — removed before label matching
+_STOPWORDS = {"and", "the", "of", "a", "an", "for", "to", "in", "&", "st", "de", "la", "el"}
+
+def _label_tokens(s: str) -> list[str]:
+    return [t for t in norm_label(s).split() if t not in _STOPWORDS]
+
+def labels_match(a: str, b: str) -> bool:
+    """
+    CONSERVATIVE: only merge two labels when one is clearly a variant of the other.
+    Merges:  'Speech' ⊂ 'Speech Therapy';  'Occ Therapy' ~ 'Occupational Therapy'
+             (abbreviation-aligned);  'Cardiolgy' ~ 'Cardiology' (single-token typo).
+    Does NOT merge two distinct multi-word names that merely share connector words
+    (e.g. 'Bosnia and Herzegovina' vs 'St. Vincent and the Grenadines').
+    """
+    ta, tb = _label_tokens(a), _label_tokens(b)
+    if not ta or not tb:
+        return False
+    sa, sb = set(ta), set(tb)
+    if sa == sb:
+        return True
+    # subset: one is the other plus qualifier words  (Speech ⊂ Speech Therapy)
+    if sa <= sb or sb <= sa:
+        return True
+    # abbreviation alignment: same token count, each token prefix-matches a partner
+    if len(ta) == len(tb):
+        long, short = (ta, tb) if len(ta) >= len(tb) else (tb, ta)
+        used, ok = set(), True
+        for stk in short:
+            cand = next((i for i, lt in enumerate(long)
+                         if i not in used and (lt.startswith(stk) or stk.startswith(lt))), None)
+            if cand is None:
+                ok = False; break
+            used.add(cand)
+        if ok:
+            return True
+    # single-token near-identical (typo) — both must be one distinctive token
+    if len(ta) == 1 and len(tb) == 1 and SequenceMatcher(None, ta[0], tb[0]).ratio() >= 0.90:
+        return True
+    return False
 
 
 # ── data classes ─────────────────────────────────────────────────────────────────
@@ -308,11 +333,10 @@ def resolve_entities(views: dict[str, list[dict]], columns: list[ColumnProfile])
         # canonical name = most frequent column name among members
         names = [m.split("::", 1)[1] for m in members]
         canon_name = max(set(names), key=names.count)
-        # collect all raw values, normalize near-duplicates
-        all_raw: list[str] = []
-        for m in members:
-            all_raw.extend(raw_values[m])
-        canon_values, aliases = _normalize_labels(all_raw)
+        # collect raw values PER column, normalize near-duplicates across columns only
+        per_col_values = [raw_values[m] for m in members]
+        all_raw = [v for lst in per_col_values for v in lst]
+        canon_values, aliases = _normalize_labels(per_col_values)
         entities.append(Entity(
             name=canon_name, columns=sorted(members),
             canonical_values=sorted(canon_values),
@@ -322,10 +346,20 @@ def resolve_entities(views: dict[str, list[dict]], columns: list[ColumnProfile])
     return entities
 
 
-def _normalize_labels(raw: list[str]) -> tuple[list[str], dict[str, str]]:
-    """Cluster near-duplicate labels by string similarity. Canonical = longest/most frequent."""
-    uniq = list(dict.fromkeys(raw))
-    freq = {u: raw.count(u) for u in uniq}
+def _normalize_labels(per_col_values: list[list[str]]) -> tuple[list[str], dict[str, str]]:
+    """
+    Cluster near-duplicate labels ACROSS columns only. Two values that co-occur as
+    DISTINCT values in the SAME column are axiomatically different entities (a column
+    never lists one entity under two names) — so they are never merged. This is what
+    keeps 'Niger'/'Nigeria' and 'Guinea'/'Equatorial Guinea' separate while still
+    merging 'Occ Therapy'/'Occupational Therapy' (which live in different views).
+    """
+    all_vals = [v for lst in per_col_values for v in lst]
+    uniq = list(dict.fromkeys(all_vals))
+    freq = {u: all_vals.count(u) for u in uniq}
+    col_sets = [set(lst) for lst in per_col_values]
+    def cooccur(a: str, b: str) -> bool:
+        return any(a in s and b in s for s in col_sets)
     parent = {u: u for u in uniq}
     def find(x):
         while parent[x] != x:
@@ -333,7 +367,7 @@ def _normalize_labels(raw: list[str]) -> tuple[list[str], dict[str, str]]:
         return x
     for i in range(len(uniq)):
         for j in range(i + 1, len(uniq)):
-            if str_sim(uniq[i], uniq[j]) >= LABEL_SIM_MIN:
+            if labels_match(uniq[i], uniq[j]) and not cooccur(uniq[i], uniq[j]):
                 parent[find(uniq[i])] = find(uniq[j])
     groups: dict[str, list[str]] = {}
     for u in uniq:
@@ -351,52 +385,89 @@ def _normalize_labels(raw: list[str]) -> tuple[list[str], dict[str, str]]:
 
 # ── relationship discovery (measures) ────────────────────────────────────────────
 
-def discover_relationships(columns: list[ColumnProfile]) -> list[Relationship]:
+def discover_relationships(views: dict[str, list[dict]], columns: list[ColumnProfile]) -> list[Relationship]:
+    """
+    Two tiers, both guarded against coincidence:
+      1. WITHIN-VIEW, ROW-VALIDATED  — A+B≈C must hold on (almost) every row → real identity.
+      2. CROSS-SCALAR (single-row views) — only with a TIGHT tolerance; marked low-confidence
+         candidates, because a single data point can coincide.
+    """
     rels: list[Relationship] = []
-
-    def rep(c: ColumnProfile) -> Optional[float]:
-        return c.total if c.rows == 1 else c.mean
-
-    # SUM relationships: only among COUNT-like measures (not rates, not temporal).
-    # Adding two percentages is meaningless, so rates are excluded from sums.
-    count_meas: dict[str, float] = {}
+    col_by_view: dict[str, list[ColumnProfile]] = {}
     for c in columns:
-        if c.role == "measure" and not c.is_rate:
-            v = rep(c)
-            if v is not None:
-                count_meas.setdefault(c.name, v)
-    citems = list(count_meas.items())
-    for i in range(len(citems)):
-        for j in range(i + 1, len(citems)):
-            for k in range(len(citems)):
+        col_by_view.setdefault(c.view, []).append(c)
+
+    # ── Tier 1: within-view row-validated sums ──────────────────────────────────
+    for v, rows in views.items():
+        meas = [c for c in col_by_view.get(v, []) if c.role == "measure" and not c.is_rate]
+        names = [c.name for c in meas]
+        if len(names) < 3 or len(rows) < 3:
+            continue
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                for k in range(len(names)):
+                    if k in (i, j):
+                        continue
+                    A, B, C = names[i], names[j], names[k]
+                    ok = tot = 0
+                    for r in rows:
+                        a, b, c = parse_num(r.get(A)), parse_num(r.get(B)), parse_num(r.get(C))
+                        if None in (a, b, c) or c == 0:
+                            continue
+                        tot += 1
+                        # both addends must contribute meaningfully (guards "big + negligible = big",
+                        # e.g. Population + Latitude ≈ Population)
+                        if abs(a) < 0.01 * abs(c) or abs(b) < 0.01 * abs(c):
+                            continue
+                        if abs((a + b) - c) / abs(c) <= REL_TOLERANCE:
+                            ok += 1
+                    if tot >= 3 and ok / tot >= 0.95:
+                        rels.append(Relationship("sum",
+                            f"{A} + {B} = {C}  [holds on {ok}/{tot} rows of '{v}']", 0.97))
+
+    # ── Tier 2: cross-scalar sums (tight tolerance, candidate) ──────────────────
+    TIGHT = 0.005
+    scal = {c.name: c.total for c in columns
+            if c.role == "measure" and not c.is_rate and c.rows == 1 and c.total is not None}
+    sitems = list(scal.items())
+    for i in range(len(sitems)):
+        for j in range(i + 1, len(sitems)):
+            for k in range(len(sitems)):
                 if k in (i, j):
                     continue
-                a, b, c = citems[i][1], citems[j][1], citems[k][1]
+                a, b, c = sitems[i][1], sitems[j][1], sitems[k][1]
                 if c == 0:
                     continue
-                # operands must share order of magnitude (guards coincidences)
                 trio = [abs(a), abs(b), abs(c)]
-                if min(trio) > 0 and max(trio) / min(trio) > 100:
+                if min(trio) > 0 and max(trio) / min(trio) > 50:
                     continue
-                if abs((a + b) - c) / abs(c) <= REL_TOLERANCE:
-                    rels.append(Relationship("sum",
-                        f"{citems[i][0]} + {citems[j][0]} ~= {citems[k][0]}  ({a:g}+{b:g}~={c:g})", 0.95))
+                if abs((a + b) - c) / abs(c) <= TIGHT:
+                    rels.append(Relationship("sum_candidate",
+                        f"{sitems[i][0]} + {sitems[j][0]} ~= {sitems[k][0]}  "
+                        f"({a:g}+{b:g}~={c:g}) [scalar candidate — verify]", 0.55))
 
-    # RATIO relationships: a rate measure ≈ countA / countB × 100
-    rate_meas = [(c.name, rep(c)) for c in columns if c.role == "measure" and c.is_rate and rep(c) is not None]
-    seen_rate = set()
-    for pn, pv in rate_meas:
-        if pn in seen_rate:
-            continue
-        for an, av in citems:
-            for bn, bv in citems:
-                if an == bn or bv == 0:
-                    continue
-                r = 100 * av / bv
-                if 0 < r <= 100 and abs(r - pv) / max(abs(pv), 1) <= REL_TOLERANCE:
-                    rels.append(Relationship("ratio",
-                        f"{pn} ~= {an} / {bn} x100  ({r:.1f}%~={pv:g}%)", 0.85))
-                    seen_rate.add(pn)
+    # ── Ratio: rate ≈ countA / countB (within-view row-validated where possible) ─
+    for v, rows in views.items():
+        cps = col_by_view.get(v, [])
+        rates = [c for c in cps if c.role == "measure" and c.is_rate]
+        counts = [c for c in cps if c.role == "measure" and not c.is_rate]
+        for rt in rates:
+            for ca in counts:
+                for cb in counts:
+                    if ca.name == cb.name:
+                        continue
+                    ok = tot = 0
+                    for r in rows:
+                        p, x, y = parse_num(r.get(rt.name)), parse_num(r.get(ca.name)), parse_num(r.get(cb.name))
+                        if None in (p, x, y) or y == 0:
+                            continue
+                        tot += 1
+                        scale = 100 if p > 1.5 else 1
+                        if abs((scale * x / y) - p) / max(abs(p), 1e-6) <= REL_TOLERANCE:
+                            ok += 1
+                    if tot >= 3 and ok / tot >= 0.95:
+                        rels.append(Relationship("ratio",
+                            f"{rt.name} = {ca.name} / {cb.name}  [holds on {ok}/{tot} rows of '{v}']", 0.9))
 
     seen, out = set(), []
     for r in rels:
@@ -524,7 +595,7 @@ def profile_workbook(views_raw: dict[str, list[dict]], total_views: Optional[int
         }
 
     entities = resolve_entities(data_views, columns)
-    relationships = discover_relationships(columns)
+    relationships = discover_relationships(data_views, columns)
     flags = detect_flags(data_views, columns, entities, relationships)
 
     return WorkbookProfile(
