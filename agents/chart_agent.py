@@ -131,6 +131,21 @@ CRITICAL — match chart type to what the view ACTUALLY contains:
     [Gap Color, Avg Predicted Shortage] is a SINGLE VALUE — use kpi_card, NOT line_chart.
     The trend version lives in a SEPARATE view (e.g. "...Forecast Trend") that has a date column.
 
+HEATMAP RULES — heatmap_chart needs TWO categorical (non-temporal) dimensions:
+  ✓ heatmap_chart when: x_axis is categorical AND breakdown_by is categorical AND a numeric measure exists
+  ✗ NEVER heatmap_chart when x_axis is a date/time/day/week/month/period field
+    → If x_axis is temporal, use line_chart (single series) or line_chart+breakdown_by (multi-series)
+    → Temporal × categorical × measure = line_chart with breakdown_by, NOT heatmap
+  ✗ NEVER heatmap_chart with breakdown_by = null — a 1-D heatmap is just a bar chart
+
+"BY [DIMENSION]" RULE — if the KPI name says "by X":
+  The phrase "by X" in the name is the user's explicit request for a breakdown.
+  → You MUST set breakdown_by to the matching dimension from available_dimensions
+  → Example: "Occupancy Trend by Facility" → breakdown_by = "Facility Name" (exact column name)
+  → Example: "Revenue by Region" → breakdown_by = "Region"
+  → Example: "Referrals by Department" → breakdown_by = "Department Name" (or closest match)
+  → If breakdown makes no sense for the chart type, reconsider the chart type, not the breakdown
+
 ANTI-DEFAULTS — do NOT lazily reach for these:
   ✗ Do NOT use bar_chart when horizontal_bar_chart, stacked_bar_chart, waterfall_chart, or pie_chart
     would tell the story better.

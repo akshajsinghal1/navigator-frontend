@@ -870,8 +870,11 @@ class OrchestratorAgent(BaseAgent):
                 # Format: trust agent's format only when it's specific (not the
                 # generic "number" fallback). If agent said "number" but the unit
                 # is %, override with "percentage" so the frontend renders correctly.
-                raw_fmt  = kpi_raw.get("l1_format") or ""
-                l1_format = raw_fmt if raw_fmt not in ("number", "", None) else _infer_format(kpi_unit)
+                raw_fmt   = kpi_raw.get("l1_format") or ""
+                # "%" / "pct" / "ratio" are not frontend-renderable format strings — normalize.
+                # Also treat generic "number" as unset and let _infer_format decide from unit.
+                _GENERIC_FMTS = {"number", "", None, "%", "pct", "ratio", "rate", "percent"}
+                l1_format = raw_fmt if raw_fmt not in _GENERIC_FMTS else _infer_format(kpi_unit)
 
                 l1 = None
                 if kpi_raw.get("l1_view_name"):

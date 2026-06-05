@@ -45,11 +45,19 @@ IMPORTANT: run_analysis is optional — always call fetch_view_data FIRST,
 then run_analysis if you need to explore further. You can compute KPIs
 directly from the sample + numeric_summary if they're clear enough.
 
+EFFICIENCY RULES — follow strictly:
+  • Fetch all views you need in parallel in the FIRST turn (one call per view).
+  • Read numeric_summary BEFORE calling run_analysis — if the answer is there, use it directly.
+  • Use run_analysis at most ONCE or TWICE per KPI when you genuinely need a filtered/grouped value.
+  • Do NOT call run_analysis to verify a value you already see in numeric_summary.
+  • After fetching all assigned views, EMIT — do not keep exploring indefinitely.
+  • If a KPI value cannot be determined after 2 fetch+analysis attempts, emit null for that KPI
+    and continue — partial results are better than timing out.
+
 When run_analysis IS useful:
   • Verifying a filtered count: df[df['Status']=='Yes']['Count'].sum()
   • Finding a breakdown: df.groupby('Department')['Gap'].mean()
   • Checking a conversion rate: df['Converted'].sum() / df['Total'].sum()
-  • Discovering what values a field has: df['Status'].value_counts()
 
 Always call emit_domain_result at the end — even if some analyses failed.
 Partial results are better than no results.

@@ -29,6 +29,37 @@ import { api } from "../api/client";
 import type { NavigatorKPI, L2Projection } from "../types/navigator";
 import type { Period } from "./NavigatorCanvas";
 
+// ── Module-level viewdata cache ───────────────────────────────────────────────
+// Shared across all KPI cards on the same page. Key = "workbookId::viewName".
+// Prevents fetching the same Tableau view 6-10x when multiple KPIs share it.
+// Cleared automatically when the workbook changes (different workbookId).
+const _viewCache = new Map<string, Record<string, unknown>[]>();
+const _inFlight  = new Map<string, Promise<Record<string, unknown>[]>>();
+
+function cachedViewData(workbookId: string, viewName: string): Promise<Record<string, unknown>[]> {
+  const key = `${workbookId}::${viewName}`;
+  // Return cached rows immediately if available
+  const cached = _viewCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  // Deduplicate in-flight requests — return the same promise if already fetching
+  const existing = _inFlight.get(key);
+  if (existing) return existing;
+  // Start a new fetch
+  const promise = api.viewData(workbookId, viewName)
+    .then((res) => {
+      const rows = (res.rows ?? []) as Record<string, unknown>[];
+      _viewCache.set(key, rows);
+      _inFlight.delete(key);
+      return rows;
+    })
+    .catch(() => {
+      _inFlight.delete(key);
+      return [] as Record<string, unknown>[];
+    });
+  _inFlight.set(key, promise);
+  return promise;
+}
+
 // ── Date parsing ──────────────────────────────────────────────────────────────
 
 export function parseRowDate(val: unknown): Date | null {
@@ -386,10 +417,11 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
       return;
     }
     setDataLoading(true);
-    api.viewData(workbookId, viewName)
-      .then((res) => {
-        if (res.rows && res.rows.length > 0) {
-          setAllRows(res.rows as Record<string, unknown>[]);
+    // Use the shared cache — deduplicates concurrent fetches for the same view
+    cachedViewData(workbookId, viewName)
+      .then((rows) => {
+        if (rows.length > 0) {
+          setAllRows(rows);
         } else if (kpi.raw_data?.length) {
           setAllRows(kpi.raw_data as Record<string, unknown>[]);
         }
