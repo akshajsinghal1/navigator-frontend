@@ -78,7 +78,7 @@ function StepList({ status, palette }: { status: PipelineStatus | null; palette:
     : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", justifyContent: "space-between" }}>
       {STEPS.map((step, i) => {
         const done    = i < currentIdx || status?.status === "completed";
         const active  = i === currentIdx && status?.status === "running";
@@ -459,14 +459,14 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
         display: "grid",
         gridTemplateColumns: showInv ? "1fr 1fr" : "1fr",
         gap: 32,
-        alignItems: "start",
+        alignItems: "stretch",
         transition: "max-width 0.4s ease",
         // Ensure the main area is tall enough for sticky to work
         minHeight: "calc(100vh - 60px)",
       }}>
 
         {/* Left — progress */}
-        <div>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
           {/* Title */}
           <div style={{ marginBottom: 28 }}>
             <h1 style={{
@@ -514,6 +514,7 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
           <div style={{
             background: palette.bg1, border: `1px solid ${palette.line}`,
             borderRadius: 8, padding: "8px 20px",
+            flex: 1, display: "flex", flexDirection: "column",
           }}>
             {status ? (
               <StepList status={status} palette={palette} />
