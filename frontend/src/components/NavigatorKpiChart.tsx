@@ -642,11 +642,16 @@ function buildOption(
           animationDuration: compact ? 200 : 600,
           color: SERIES_COLORS,
           tooltip: { ...tt, trigger: "axis", axisPointer: { type: isStackedBar ? "shadow" : "line" } },
-          legend: compact ? { show: false } : {
-            type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
-            textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 },
-          },
-          grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: compact ? 8 : 32 },
+          // Show a compact legend even in tile mode for multi-series — without it,
+          // users can't tell that 5 facility/dept lines exist when values are similar.
+          legend: compact
+            ? { type: "scroll", top: 2, icon: "circle", itemWidth: 6, itemHeight: 6,
+                textStyle: { color: palette.ink4, fontFamily: CHART_NUM_FONT, fontSize: 8 } }
+            : { type: "scroll", bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+                textStyle: { color: palette.ink3, fontFamily: CHART_FONT, fontSize: 11 } },
+          grid: compactGrid
+            ? { ...compactGrid, top: compact ? 18 : 12 }   // extra room for legend
+            : { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 32 },
           xAxis: {
             ...AXIS_BASE, type: "category", data: categories,
             axisLabel: compact ? COMPACT_AXIS_X.axisLabel

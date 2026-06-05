@@ -869,8 +869,16 @@ class OrchestratorAgent(BaseAgent):
                 kpi_id = kpi_raw["id"]
                 spec   = self._chart_specs.get(kpi_id, {})
 
-                # Resolve unit first — used by both L1 and chart aggregation
-                raw_unit  = kpi_raw.get("l1_unit", "")
+                # Resolve unit first — used by both L1 and chart aggregation.
+                # Normalize verbose word-units that domain agents sometimes return:
+                #   "staff", "staffs", "fte", "people", "employees" → "" (shown as plain number)
+                #   These are count-type units where the frontend can't render them
+                #   as a symbol, and they look wrong on fractional values ("-0.7 staff").
+                _WORD_UNITS_STRIP = {"staff", "staffs", "fte", "ftes", "people", "employees",
+                                     "patients", "admissions", "units", "items", "records"}
+                raw_unit  = kpi_raw.get("l1_unit", "") or ""
+                if raw_unit.strip().lower() in _WORD_UNITS_STRIP:
+                    raw_unit = ""
                 raw_value = kpi_raw.get("l1_value")
                 kpi_unit  = raw_unit or _infer_unit(
                     kpi_raw.get("name", ""),
