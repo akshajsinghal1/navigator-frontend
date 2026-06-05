@@ -626,7 +626,8 @@ function buildOption(
           ? COMPACT_AXIS_X.axisLabel
           : { ...AXIS_BASE.axisLabel, rotate: allX.length > 8 ? 30 : 0, hideOverlap: true },
       },
-      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
+      // Always auto-scale: compact tile and expanded modal should both zoom to data range.
+      yAxis: { ...AXIS_BASE, type: "value", scale: true },
       series: [
         // Confidence band — lower bound (invisible fill base)
         ...(hasCI ? [{
@@ -1002,7 +1003,9 @@ function buildOption(
       grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: hasCI ? 16 : 12, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "category", data: xData,
         axisLabel: compact ? COMPACT_AXIS_X.axisLabel : { ...AXIS_BASE.axisLabel, rotate: xData.length > 8 ? 30 : 0, hideOverlap: true } },
-      yAxis: { ...AXIS_BASE, type: "value", scale: compact },
+      // Line/area charts always auto-scale — compact and expanded should match.
+      // scale:false (start-from-0) is only correct for bar charts.
+      yAxis: { ...AXIS_BASE, type: "value", scale: true },
       series: [{ name: kpi.name, type: "line", data: yData, smooth: true, symbol: "none",
         lineStyle: { color: palette.accent, width: 2 },
         areaStyle: { color: translucent(palette.accent, 0.25) } }],
@@ -1252,7 +1255,7 @@ function buildOption(
           `${xHint ?? xCol}: ${p.value[0].toLocaleString()}<br/>${yHint ?? yCol}: ${p.value[1].toLocaleString()}` },
       grid: compactGrid ?? { containLabel: true, left: "8%", right: "4%", top: 12, bottom: 8 },
       xAxis: { ...AXIS_BASE, type: "value", name: xHint ?? xCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
-      yAxis: { ...AXIS_BASE, type: "value", scale: compact, name: yHint ?? yCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
+      yAxis: { ...AXIS_BASE, type: "value", scale: true, name: yHint ?? yCol ?? "", nameLocation: "end", nameTextStyle: { color: palette.ink4, fontSize: 10 } },
       series: [{ type: "scatter", data: scatterData, symbolSize: (d: number[]) => Math.sqrt(d[2]) * 5 + 8,
         itemStyle: { color: translucent(palette.accent, 0.7), borderColor: palette.accent, borderWidth: 1 } }],
     };
