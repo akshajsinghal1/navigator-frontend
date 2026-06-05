@@ -199,6 +199,13 @@ function monthYearToNum(s: string): number {
   // YYYY-MM or YYYY/MM — e.g. "2026-11"
   const ym = s.match(/(\d{4})[/-](\d{1,2})/);
   if (ym) return parseInt(ym[1]) * 100 + parseInt(ym[2]);
+  // "Month D, YYYY" or "Month DD, YYYY" — e.g. "May 31, 2026", "June 2, 2026"
+  // Must check BEFORE "Month YYYY" to avoid partial match
+  const mdy2 = s.match(/([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s*(\d{4})/);
+  if (mdy2) {
+    const m = months[mdy2[1].toLowerCase()] ?? 0;
+    return parseInt(mdy2[3]) * 10000 + m * 100 + parseInt(mdy2[2]);
+  }
   // "Month YYYY" — e.g. "November 2026"
   const my = s.match(/([A-Za-z]{3})[a-z]*\s*(\d{4})/);
   if (my) return parseInt(my[2]) * 100 + (months[my[1].toLowerCase()] ?? 0);
@@ -691,7 +698,9 @@ function buildOption(
     const byCol = findColumn(rows, kpi.chart.breakdown_by);
     if (byCol && byCol !== xCol && byCol !== yCol) {
       const { categories, series } = groupByStacked(rows, xCol!, byCol, yCol ?? byCol, agg, xAxisType);
-      if (series.length > 1) {
+      // Use multi-series rendering even for 1 series: tooltip/legend shows the breakdown
+      // dimension name (e.g. "Central Care Institute") not the generic KPI name.
+      if (series.length >= 1) {
         const isStackedArea = ctype === "stacked_area_chart";
         const isStackedBar  = ctype === "stacked_bar_chart";
         const isLine        = ctype === "line_chart";
