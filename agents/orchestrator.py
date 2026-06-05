@@ -477,6 +477,7 @@ class OrchestratorAgent(BaseAgent):
         available_views: list[str] | None = None,
         manifest = None,   # pipeline.manifest.WorkbookManifest | None
         view_cache: dict[str, list[dict]] | None = None,
+        profile = None,    # pipeline.profiler.WorkbookProfile | None
     ) -> None:
         super().__init__(
             model          = _MODEL,
@@ -489,8 +490,9 @@ class OrchestratorAgent(BaseAgent):
         self._workbook_luid   = workbook_luid
         self._workbook_meta   = workbook_meta
         self._available_views = available_views or []
-        self._manifest        = manifest   # exact field names + reachability info
-        self._view_cache      = view_cache or {}   # profiler-fetched data, reused by domain agents
+        self._manifest        = manifest
+        self._view_cache      = view_cache or {}
+        self._profile         = profile    # WorkbookProfile — source for ViewProfile slices
 
         # Semaphore: cap concurrent domain agents to avoid Gemini rate limits.
         # With multi-phase Phase-A, the orchestrator may issue 8-10 analyze_domain
@@ -682,15 +684,24 @@ class OrchestratorAgent(BaseAgent):
             reachable_columns = list(inp.get("available_dimensions", []))
 
         # ── Pull real trend/anomaly data from the domain agent result ────────────
-        # Domain agent has already fetched and analyzed the raw rows.
-        # Pass those grounded findings to the chart agent so it writes
-        # accurate key_insight and risk text, not guesses.
         kpi_domain_data: dict = {}
         for domain_result in self._domain_results.values():
             for k in domain_result.get("kpis", []):
                 if k.get("id") == kpi_id:
                     kpi_domain_data = k
                     break
+
+        # ── Build ViewProfile slice from the profiler ─────────────────────────
+        # This is the core of Sprint 1: give the chart agent structural truth
+        # about the view — grain, field types, cardinality, entity dims, flags —
+        # instead of just a flat list of column name strings.
+        view_profile: dict | None = None
+        if self._profile is not None and view_name:
+            try:
+                from pipeline.profiler import get_view_profile
+                view_profile = get_view_profile(view_name, self._profile)
+            except Exception as exc:
+                log.debug("Could not build view_profile for %r: %s", view_name, exc)
 
         agent = ChartAgent()
         spec  = agent.generate(
@@ -709,6 +720,7 @@ class OrchestratorAgent(BaseAgent):
             available_dimensions = reachable_columns,
             objective            = inp.get("objective", ""),
             persona_role         = inp.get("persona_role", ""),
+            view_profile         = view_profile,   # ← structured truth from profiler
             # Real data from domain agent ↓
             trend_direction      = kpi_domain_data.get("trend_direction"),
             trend_pct            = kpi_domain_data.get("trend_pct"),

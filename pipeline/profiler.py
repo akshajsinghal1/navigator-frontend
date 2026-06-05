@@ -708,3 +708,79 @@ def format_profile_for_agent(profile: WorkbookProfile) -> str:
         L.append(f"  '{vname}': {cols}")
 
     return "\n".join(L)
+
+
+# ── Per-view profile slice for chart agents ──────────────────────────────────────
+# Returns ONLY what the chart agent needs for one specific view — not the full
+# WorkbookProfile. Keeps chart agent prompts small and focused.
+
+def get_view_profile(view_name: str, profile: WorkbookProfile) -> dict:
+    """
+    Extract a compact, chart-agent-ready profile for a specific view.
+
+    Gives the chart agent the structural truth it needs to choose the right
+    chart type and breakdown — without exposing the entire WorkbookProfile:
+
+        grain           → is this a scalar (single value) or a series?
+        fields          → for each column: role, dtype, cardinality, is_rate
+        quality_flags   → degenerate breakdowns, suspicious distributions, etc.
+        entity_dims     → which categorical columns are known entities (and their values)
+
+    The chart agent treats this as ground truth and should not override it.
+    """
+    view_info = profile.views.get(view_name, {})
+
+    # ── Field profiles for this view ─────────────────────────────────────────
+    fields: dict[str, dict] = {}
+    for col in profile.columns:
+        if col.view != view_name:
+            continue
+        entry: dict = {
+            "role":     col.role,          # "measure" | "dimension"
+            "dtype":    col.dtype,         # "numeric" | "temporal" | "categorical" | "boolean"
+            "distinct": col.distinct,
+        }
+        if col.role == "measure":
+            if col.mean  is not None: entry["mean"]    = col.mean
+            if col.min   is not None: entry["min"]     = col.min
+            if col.max   is not None: entry["max"]     = col.max
+            if col.is_rate:           entry["is_rate"] = True   # percentage/ratio — not summable
+        if col.constant:
+            entry["constant"] = True  # carries no information
+        fields[col.name] = entry
+
+    # ── Quality flags scoped to this view ────────────────────────────────────
+    flags = []
+    for f in profile.flags:
+        if f.where == view_name or f.where.startswith(f"{view_name}::"):
+            flags.append({"code": f.code, "severity": f.severity, "message": f.message})
+
+    # ── Degenerate breakdowns (shortcut from flags) ───────────────────────────
+    degenerate: list[str] = [
+        f["message"] for f in flags if f["code"] == "degenerate_breakdown"
+    ]
+
+    # ── Entity dimensions present in this view ────────────────────────────────
+    entity_dims: dict[str, dict] = {}
+    for e in profile.entities:
+        for col_ref in e.columns:
+            if "::" not in col_ref:
+                continue
+            v, c = col_ref.split("::", 1)
+            if v == view_name and c in fields:
+                entity_dims[c] = {
+                    "canonical_values": e.canonical_values[:20],
+                    "cardinality":      len(e.canonical_values),
+                    "aliases":          e.aliases or {},
+                }
+
+    return {
+        "view_name":            view_name,
+        "grain":                view_info.get("grain", "unknown"),   # "scalar" | "series"
+        "is_scalar":            view_info.get("grain") == "scalar",
+        "row_count":            view_info.get("rows", 0),
+        "fields":               fields,
+        "quality_flags":        flags,
+        "degenerate_breakdowns": degenerate,
+        "entity_dimensions":    entity_dims,
+    }

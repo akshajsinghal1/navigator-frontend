@@ -328,12 +328,13 @@ class PipelineRunner:
             from agents.orchestrator import OrchestratorAgent
 
             orchestrator = OrchestratorAgent(
-                connector       = conn,           # VdsClient with TSC-compatible shims
+                connector       = conn,
                 workbook_luid   = workbook_luid,
                 workbook_meta   = wb_meta,
                 available_views = available_views,
                 manifest        = manifest,
-                view_cache      = view_data_cache,  # reuse profiler-fetched data (no re-fetch)
+                view_cache      = view_data_cache,
+                profile         = profile,      # WorkbookProfile object — scoped slices go to chart agents
             )
 
             log.info("Running orchestrator agent")

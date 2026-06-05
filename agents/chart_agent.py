@@ -33,6 +33,40 @@ You are a data visualization and business explanation agent for Navigator.
 Your job: given a single KPI with its data, select the best chart type and
 write clear, business-focused explanations for a non-technical audience.
 
+VIEW PROFILE — read this first, it is ground truth
+════════════════════════════════════════════════════
+Your input includes a `view_profile` object computed deterministically from
+the actual Tableau data. When present, treat it as the authoritative source
+for chart decisions. It contains:
+
+  grain          — "scalar" (single value, no series) or "series" (multiple rows)
+  is_scalar      — true means this view has ONE row; NEVER pick line/bar/area/heatmap.
+                   ONLY kpi_card or gauge_chart.
+  fields         — for each column:
+      role       → "measure" or "dimension"
+      dtype      → "temporal" | "categorical" | "numeric" | "boolean"
+      distinct   → number of unique values
+      is_rate    → true for percentages/ratios (not summable, avg not sum)
+      mean/min/max → actual data statistics
+  quality_flags  — profiler-detected issues for this view:
+      degenerate_breakdown → this dimension does NOT vary meaningfully within the other;
+                             do NOT use it as breakdown_by — it will look like a bug
+      suspicious_uniform   → categories are near-equal — do NOT headline a top segment
+  entity_dimensions — categorical columns that are KNOWN business entities
+                       with verified canonical values and cardinality
+
+How to use view_profile for chart selection:
+  • is_scalar=true → kpi_card or gauge_chart ONLY, period.
+  • A field with dtype="temporal" → it is the x-axis of a time series (line_chart),
+    NOT a category in a heatmap.
+  • A field with dtype="categorical" and distinct=5 in entity_dimensions → strong
+    breakdown candidate (produces 5 readable series).
+  • A field flagged as degenerate_breakdown → never use as breakdown_by.
+  • A field with dtype="numeric" and is_rate=true → use as the measure (y-axis),
+    aggregation="avg" not "sum".
+
+If view_profile is absent, fall back to available_dimensions (flat list of names).
+
 CRITICAL — EXACT FIELD NAMES (read this carefully)
 ══════════════════════════════════════════════════
 Your input includes `available_dimensions` and `field_name`. These are the
@@ -254,6 +288,7 @@ class ChartAgent(BaseAgent):
         available_dimensions: list[str],
         objective: str,
         persona_role: str,
+        view_profile: dict | None = None,   # structured truth from profiler
         # Real domain agent findings (used to write grounded insight/risk)
         trend_direction: str | None = None,
         trend_pct: float | None = None,
@@ -279,6 +314,9 @@ class ChartAgent(BaseAgent):
             "has_formula":     has_formula,
             "formula":         formula,
             "formula_parameters": formula_parameters,
+            # view_profile is the primary source of truth when present.
+            # available_dimensions is the legacy fallback (flat column names).
+            "view_profile":         view_profile,
             "available_dimensions": available_dimensions,
             "business_objective":   objective,
             "persona_role":         persona_role,
@@ -292,15 +330,14 @@ class ChartAgent(BaseAgent):
             },
             "task": (
                 f"Select the MOST EXPRESSIVE chart type for '{kpi_name}' "
-                f"keeping in mind the persona '{persona_role}'. "
-                f"Read the persona role and adapt: executive roles need simpler charts and "
-                f"plain business explanations; operational managers need operational detail; "
-                f"analysts can handle complex charts and technical language. "
-                f"Do not default to bar_chart or line_chart — consider the full range of chart types. "
-                f"Base 'key_insight' and 'risk' on the domain_agent_findings above — "
-                f"these contain REAL data from Tableau. Do not fabricate. "
-                f"This KPI belongs to the '{domain}' domain. "
-                f"Business objective: {objective}"
+                f"for persona '{persona_role}'. "
+                f"START with view_profile — it is verified ground truth about the data structure. "
+                f"If view_profile.is_scalar=true, use kpi_card or gauge_chart only. "
+                f"If a field has dtype='temporal', it is the x-axis of a time series, not a heatmap dimension. "
+                f"If the KPI name says 'by X', set breakdown_by to the matching entity dimension. "
+                f"Respect all quality_flags — degenerate_breakdown means do NOT use that field as breakdown_by. "
+                f"Base 'key_insight' and 'risk' on domain_agent_findings — real Tableau data. "
+                f"This KPI belongs to the '{domain}' domain. Business objective: {objective}"
             ),
         }, indent=2)
 
