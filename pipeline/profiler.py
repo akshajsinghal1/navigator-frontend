@@ -657,17 +657,18 @@ def format_profile_for_agent(profile: WorkbookProfile) -> str:
             meas = ", ".join(vs.get("measures", []))
             L.append(f"  - '{vname}' [series] dims:[{dims}] measures:[{meas}]")
 
-    # Relationships
-    real = [r for r in profile.relationships if r.kind in ("sum", "ratio")]
-    cand = [r for r in profile.relationships if r.kind.endswith("candidate")]
-    if real:
-        L.append("\nVERIFIED RELATIONSHIPS (safe to use in KPI definitions):")
-        for r in real:
-            L.append(f"  - {r.expr}")
-    if cand:
-        L.append("\nCANDIDATE RELATIONSHIPS (plausible — verify before relying on):")
-        for r in cand:
-            L.append(f"  - {r.expr}")
+    # Relationships — Change 4: gate at 0.85 confidence for orchestrator text.
+    # Candidates (0.55) exist as artifacts but must NOT appear here — a false
+    # relationship in the orchestrator's context causes worse harm than silence.
+    CONFIDENCE_GATE = 0.85
+    verified = [r for r in profile.relationships if r.confidence >= CONFIDENCE_GATE]
+    suppressed = [r for r in profile.relationships if r.confidence < CONFIDENCE_GATE]
+    if verified:
+        L.append("\nVERIFIED RELATIONSHIPS (confidence >= 0.85 — safe to use):")
+        for r in verified:
+            L.append(f"  - [{r.kind}] {r.expr}")
+    if suppressed:
+        L.append(f"\n  ({len(suppressed)} low-confidence relationships suppressed — confidence < 0.85)")
 
     # Mandatory rules from flags
     by: dict[str, list[QualityFlag]] = {}

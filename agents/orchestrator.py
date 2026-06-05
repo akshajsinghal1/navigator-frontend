@@ -564,12 +564,30 @@ class OrchestratorAgent(BaseAgent):
             raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
         # ── Build a compact "reachable fields" summary from the manifest ──────
-        # This is the source of truth for what the agent should design with.
+        # Change 2: use profiler knowledge to prune noise fields before the
+        # orchestrator sees them. A field is excluded if:
+        #   - unreachable (not in any view CSV)
+        #   - constant in the profiler (carries no information)
+        #   - flagged as high_null (>30% null, unreliable)
+        # This reduces cognitive load without hardcoding any field names.
+        profiler_noise_fields: set[str] = set()
+        if self._profile is not None:
+            for col in self._profile.columns:
+                if col.constant:
+                    profiler_noise_fields.add(col.name)
+            for flag in self._profile.flags:
+                if flag.code == "high_null" and "::" in flag.where:
+                    profiler_noise_fields.add(flag.where.split("::", 1)[1])
+
         reachable_fields_summary: list[dict[str, Any]] = []
+        fields_before = 0
         if self._manifest is not None:
             for f in self._manifest.all_fields():
+                fields_before += 1
                 if f.reachable_via == "unreachable":
                     continue
+                if f.real_name in profiler_noise_fields:
+                    continue  # constant or high-null — no value to the orchestrator
                 entry = {
                     "name":          f.real_name,           # exact name in real data
                     "data_type":     f.data_type,
@@ -583,6 +601,16 @@ class OrchestratorAgent(BaseAgent):
 
         n_views  = len(self._available_views) if self._available_views else 0
         n_fields = len(reachable_fields_summary)
+        fields_pruned = fields_before - n_fields
+        if fields_pruned > 0:
+            log.info(
+                "Semantic filter (Change 2): pruned %d noise/constant/unreachable fields "
+                "→ %d fields reaching orchestrator (was %d)",
+                fields_pruned, n_fields, fields_before,
+            )
+        self._run_metrics["reachable_fields_before_prune"] = fields_before
+        self._run_metrics["reachable_fields_after_prune"]  = n_fields
+        self._run_metrics["fields_pruned_by_profiler"]     = fields_pruned
 
         # ── View quality map: compact per-view facts for domain planning ───────
         # Gives the orchestrator grain, entity dims, and quality flags for every
