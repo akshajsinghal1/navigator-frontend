@@ -457,7 +457,9 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
         width: "100%",
         maxWidth: showInv ? 1000 : 560,
         display: "grid",
-        gridTemplateColumns: showInv ? "1fr 1fr" : "1fr",
+        // minmax(0,1fr) lets tracks shrink so long status text truncates
+        // instead of blowing out the column width and distorting the layout
+        gridTemplateColumns: showInv ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)",
         gap: 32,
         alignItems: "start",
         transition: "max-width 0.4s ease",
@@ -466,7 +468,7 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
       }}>
 
         {/* Left — progress */}
-        <div>
+        <div style={{ minWidth: 0 }}>
           {/* Title */}
           <div style={{ marginBottom: 28 }}>
             <h1 style={{
@@ -550,6 +552,7 @@ export function PipelineScreen({ runId, runInfo, onDone, onRetry }: Props) {
           <div style={{
             position: "sticky",
             top: 24,
+            minWidth: 0,
             maxHeight: "calc(100vh - 100px)",
             overflowY: "auto",
           }}>
