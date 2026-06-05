@@ -52,11 +52,11 @@ IMPORTANT — efficiency rules:
   • All view data is ALREADY LOADED. You may call run_analysis directly on any
     view without fetch_view_data first. Numeric columns (incl. '%' values) are
     already coerced to numbers — do NOT strip '%' or call astype; just aggregate.
-  • run_analysis accepts multi-statement code, but you rarely need it. Keep each
-    analysis to one short expression. Do not loop over many views — focus on the
-    few highest-value gaps.
+  • Run AT MOST 3-4 run_analysis calls total, then STOP and emit. Do not keep
+    exploring view after view — pick the few highest-value gaps and move on.
   • You MUST call emit_qa_result before finishing — even if you find zero gaps
     (return an empty supplementary_kpis list). Never end without emitting.
+  • If you have run 4 analyses, your NEXT action must be emit_qa_result.
 
 Gap detection checklist:
   1. UNUSED VIEWS: views in available_views not used by any KPI
@@ -182,7 +182,7 @@ class QAAgent(BaseAgent):
             model          = _MODEL,
             tools          = _QA_TOOLS,
             system_prompt  = _SYSTEM_PROMPT,
-            max_iterations = 20,
+            max_iterations = 10,   # QA is a quick review, not deep exploration
             max_tokens     = 8192,
         )
         self._connector      = connector

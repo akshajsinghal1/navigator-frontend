@@ -100,7 +100,9 @@ def _infer_unit(kpi_name: str, field_name: str, value) -> str:
     monetary = [
         "sales", "revenue", "profit", "compensation", "commission",
         "cost", "price", "spend", "earning", "income", "gross",
-        "forecast", "quota", "ote", "budget", "expense", "overhead",
+        # NOTE: 'forecast'/'value'/'amount' removed — too generic, they wrongly
+        # tagged non-monetary metrics (e.g. "Staffing Gap Forecast" -> $) as USD.
+        "quota", "ote", "budget", "expense", "overhead",
         # SaaS
         "mrr", "arr", "ltv", "cac", "acv", "tcv", "arpu", "expansion",
         # Finance
@@ -110,7 +112,7 @@ def _infer_unit(kpi_name: str, field_name: str, value) -> str:
         # Logistics
         "freight", "shipping cost", "fulfillment cost",
         # Generic
-        "amount", "value", "payment", "transaction total", "billing",
+        "payment", "transaction total", "billing",
         "invoice", "contract value",
     ]
 
