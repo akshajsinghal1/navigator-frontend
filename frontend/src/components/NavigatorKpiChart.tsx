@@ -91,6 +91,56 @@ function parseNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+// ── RAG (Red / Amber / Green) signal system ──────────────────────────────────
+// Generic — no hardcoded domain thresholds. Priority order:
+//   1. Severity-mapped categorical column (workbook already classified risk)
+//   2. All-negative numeric → most negative = worst = RED
+//   3. Statistical outliers (>1.5σ from mean in "bad" direction = RED)
+//   4. Fallback → NEUTRAL (no override)
+
+const RAG_GREEN  = "#4CAF50";
+const RAG_AMBER  = "#FF9800";
+const RAG_RED    = "#F44336";
+const RAG_NEUTRAL= ""; // use theme default
+
+type RAGSignal = "critical" | "warning" | "stable" | "neutral";
+
+/** Derive RAG signal for a single numeric value given the full dataset. */
+function deriveRAGSignal(value: number, allValues: number[]): RAGSignal {
+  if (!allValues.length) return "neutral";
+  const allNeg = allValues.every((v) => v <= 0);
+  if (allNeg) {
+    // All negative → most negative = worst
+    const sorted = [...allValues].sort((a, b) => a - b); // ascending, worst first
+    const n = sorted.length;
+    const rank = sorted.indexOf(value);
+    if (rank < Math.ceil(n / 3)) return "critical";
+    if (rank < Math.ceil((2 * n) / 3)) return "warning";
+    return "stable";
+  }
+  // Statistical: compute mean + std, flag outliers in "bad" direction
+  const mean = allValues.reduce((a, b) => a + b, 0) / allValues.length;
+  const std  = Math.sqrt(allValues.reduce((a, b) => a + (b - mean) ** 2, 0) / allValues.length);
+  if (!std) return "neutral";
+  const z = (value - mean) / std;
+  // For negative deviation (below average = bad in most BI metrics):
+  if (z < -1.5) return "critical";
+  if (z < -0.75) return "warning";
+  return "stable";
+}
+
+function ragColor(signal: RAGSignal): string {
+  if (signal === "critical") return RAG_RED;
+  if (signal === "warning")  return RAG_AMBER;
+  if (signal === "stable")   return RAG_GREEN;
+  return RAG_NEUTRAL;
+}
+
+/** Map a numeric value to a RAG color using the full dataset. */
+function ragColorForValue(value: number, allValues: number[]): string {
+  return ragColor(deriveRAGSignal(value, allValues));
+}
+
 // ── Confidence interval detection ─────────────────────────────────────────────
 // Finds upper/lower bound columns in rows for rendering prediction bands.
 // Works automatically for any Tableau view that has interval columns.
@@ -779,18 +829,22 @@ function buildOption(
       series: [{
         name: kpi.name,
         type: "bar",
-        data: hPairs.map((p) => p.y),
+        // RAG: color each bar by its signal relative to the full dataset
+        data: hPairs.map((p) => {
+          const allY = hPairs.map((h) => h.y);
+          const c = ragColorForValue(p.y, allY);
+          return {
+            value: p.y,
+            itemStyle: c
+              ? { color: c, borderRadius: [0, 3, 3, 0] }
+              : {
+                  color: { type: "linear", x: 0, y: 0, x2: 1, y2: 0,
+                    colorStops: [{ offset: 0, color: translucent(palette.accent, 0.7) }, { offset: 1, color: palette.accent }] },
+                  borderRadius: [0, 3, 3, 0],
+                },
+          };
+        }),
         barMaxWidth: 20,
-        itemStyle: {
-          color: {
-            type: "linear", x: 0, y: 0, x2: 1, y2: 0,
-            colorStops: [
-              { offset: 0, color: translucent(palette.accent, 0.7) },
-              { offset: 1, color: palette.accent },
-            ],
-          },
-          borderRadius: [0, 3, 3, 0],
-        },
       }],
     };
   }
@@ -1107,12 +1161,20 @@ function buildOption(
         axisTick: { show: false },
         axisLine: { lineStyle: { color: palette.line2 } },
       },
-      visualMap: {
-        show: false,
-        min: Math.min(...heatData.map(d => d[2])),
-        max: Math.max(...heatData.map(d => d[2])),
-        inRange: { color: [translucent(palette.accent, 0.1), palette.accent] },
-      },
+      visualMap: (() => {
+        const vals = heatData.map(d => d[2]);
+        const minV = Math.min(...vals);
+        const maxV = Math.max(...vals);
+        // Use RAG when:
+        //  - severity-mapped (values are 1/2/3 from HIGH/MEDIUM/LOW categorical) → green→amber→red
+        //  - pure numeric all-negative → green (least bad) → red (worst)
+        // Use single-color accent gradient for mixed/positive numeric.
+        const isSeverityMapped = severityCol !== null;
+        const allNeg = vals.every(v => v <= 0);
+        const useRAG  = isSeverityMapped || allNeg;
+        return {
+        };
+      })(),
       series: [{ type: "heatmap", data: heatData, emphasis: { itemStyle: { shadowBlur: 10 } } }],
     };
   }

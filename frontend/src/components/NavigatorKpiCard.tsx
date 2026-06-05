@@ -490,13 +490,28 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
   const filteredRows = allRows;
 
   // ── Headline value to display ──────────────────────────────────────────────
-  // While loading, show pipeline-stored config value as placeholder
-  const liveValue   = period === "now" ? liveL1 : liveL2;
+  const liveValue    = period === "now" ? liveL1 : liveL2;
   const displayValue = dataLoading ? (kpi.l1?.value ?? null) : liveValue;
+  const unit         = kpi.l1?.unit ?? "";
 
-  // Use config unit; if live value is a whole number and unit is USD but
-  // the field name suggests a count, trust the number over the unit label
-  const unit = kpi.l1?.unit ?? "";
+  // ── RAG signal for this KPI ────────────────────────────────────────────────
+  // Derived from existing data — no domain thresholds hardcoded.
+  // risk text present → warning; large negative trend → warning/critical;
+  // negative value with negative trend → critical
+  const kpiSignal = (() => {
+    const hasRisk   = !!kpi.explanation?.risk;
+    const trendDown = kpi.trend_direction === "down";
+    const trendPct  = kpi.trend_pct ?? 0;
+    const val       = typeof displayValue === "number" ? displayValue : null;
+    if (hasRisk && val !== null && val < 0 && trendDown && trendPct < -15) return "critical";
+    if (hasRisk || (trendDown && trendPct < -10))                           return "warning";
+    if (kpi.trend_direction === "up" && trendPct > 5)                       return "stable";
+    return "neutral";
+  })();
+  const signalColor = kpiSignal === "critical" ? "#F44336"
+                    : kpiSignal === "warning"  ? "#FF9800"
+                    : kpiSignal === "stable"   ? "#4CAF50"
+                    : "";
 
   // ── Hover handlers ─────────────────────────────────────────────────────────
   function handleMouseEnter() {
@@ -551,8 +566,16 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
 
       {/* Header — name + badges + trend + info icon */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        {/* Name + layer badge */}
+        {/* Name + RAG signal dot + layer badge */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+          {/* RAG signal dot — only shown when signal is non-neutral */}
+          {signalColor && (
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: signalColor,
+              boxShadow: `0 0 4px ${signalColor}80`,
+            }} />
+          )}
           <span style={{
             fontFamily: CHART_FONT,
             fontSize: 12,
@@ -635,13 +658,13 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
         </div>
       </div>
 
-      {/* Headline value */}
+      {/* Headline value — color driven by RAG signal */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{
           fontFamily: CHART_NUM_FONT,
           fontSize: isCardOnly ? 32 : 26,
           fontWeight: 600,
-          color: dataLoading ? palette.ink4 : palette.ink,
+          color: dataLoading ? palette.ink4 : (signalColor || palette.ink),
           letterSpacing: "-0.02em",
           lineHeight: 1,
           fontVariantNumeric: "tabular-nums",
