@@ -1,0 +1,134 @@
+{
+  "_meta": {
+    "author": "independent analyst pass (no Navigator code/output used)",
+    "workbook": "Navigator_Predictive_Analytics_v2_Extract",
+    "grounding": "all numbers verified directly from view data; design respects profiler flags",
+    "objective": "Run a 5-facility hospital network at safe capacity and adequate staffing, and intervene where forecasts show risk."
+  },
+
+  "data_truths_I_established_first": {
+    "facilities": 5,
+    "departments_canonical": 12,
+    "bed_identity_verified": "Occupied (607) + Available (291) = Staffed (898)  [holds]",
+    "licensed_beds": 1050,
+    "true_utilization": "Occupied/Staffed = 607/898 = 67.6%  (NOT the 74.3% the workbook reports)",
+    "reported_occupancy_pct": 74.3,
+    "occupancy_reconciliation": "FLAG: 74.3% matches neither 607/898 (67.6%) nor 607/1050 (57.8%). Do not present 74.3% as bed utilization without a caveat.",
+    "occupancy_varies_by": "FACILITY only (73.8%-74.9%, ~1pt spread). Does NOT vary by department (degenerate) - never break occupancy down by department.",
+    "staffing_shortage_varies_by": "DEPARTMENT (ICU -0.84, Emergency -0.76 worst) - this IS the actionable breakdown.",
+    "referral_mix": "FLAG: 5 statuses all ~20% (CV=0.01) - statistically uniform / likely synthetic. Do NOT headline a 'largest segment'.",
+    "referral_trend": "Declining 9,094 (Jan) -> 6,550 (Dec), -28% over the year.",
+    "time_grain": "Operational daily Apr 1 - May 9 2026 (~6 weeks); referrals monthly (12 months)."
+  },
+
+  "personas": [
+    {
+      "role": "Chief Operating Officer",
+      "level": "executive",
+      "rationale": "Network-wide health in one screen. Headlines + risk, no operational detail.",
+      "sections": [
+        {
+          "title": "Network Capacity",
+          "kpis": [
+            {"name": "Bed Utilization (occupied of staffed)", "value": "67.6%", "chart": "gauge_chart",
+             "note": "Computed from verified bed identity, NOT the unreconciled 74.3% figure."},
+            {"name": "Available Beds Right Now", "value": 291, "chart": "kpi_card"},
+            {"name": "Tomorrow's Predicted Occupancy", "value": "71.7%", "chart": "kpi_card",
+             "confidence_band": "69.7% - 73.7%"}
+          ]
+        },
+        {
+          "title": "Network Risk",
+          "kpis": [
+            {"name": "Current Staffing Gap", "value": "-14.5%", "chart": "gauge_chart"},
+            {"name": "Predicted Staffing Shortage (next horizon)", "value": -0.70, "chart": "kpi_card",
+             "confidence_band": "-1.70 to +0.30"}
+          ]
+        }
+      ]
+    },
+
+    {
+      "role": "Facility Operations Manager",
+      "level": "manager",
+      "rationale": "Which of the 5 facilities needs attention. Facility is the ONLY informative breakdown for occupancy.",
+      "sections": [
+        {
+          "title": "Capacity by Facility",
+          "kpis": [
+            {"name": "Occupancy by Facility", "chart": "bar_chart", "x": "Facility Name",
+             "values": {"Westside Hospital": 74.9, "North General": 74.5, "South Valley Medical": 74.3,
+                        "East Medical Center": 74.1, "Central Care Institute": 73.8},
+             "note": "Spread is only ~1pt - I would label this 'facilities are balanced' rather than implying a hotspot."},
+            {"name": "Occupancy Trend (network)", "chart": "line_chart", "x": "Day of Utilization Datetime"}
+          ]
+        },
+        {
+          "title": "Bed Flow",
+          "kpis": [
+            {"name": "Licensed / Staffed / Occupied / Available", "chart": "kpi_card x4",
+             "values": {"Licensed": 1050, "Staffed": 898, "Occupied": 607, "Available": 291}},
+            {"name": "Staffed-bed shortfall vs licensed", "value": "152 beds licensed but not staffed",
+             "chart": "kpi_card", "note": "Derived insight: 1050-898. A capacity lever no single view states."}
+          ]
+        }
+      ]
+    },
+
+    {
+      "role": "Workforce / Staffing Manager",
+      "level": "manager",
+      "rationale": "Owns staffing gaps, overtime, productivity, and the department-level shortage forecast - the real actionable layer.",
+      "sections": [
+        {
+          "title": "Staffing Health",
+          "kpis": [
+            {"name": "Overtime Rate", "value": "37.5%", "chart": "gauge_chart",
+             "note": "High - worth flagging as the productivity risk."},
+            {"name": "Productivity Ratio", "value": "90.7%", "chart": "gauge_chart"},
+            {"name": "Staffing Gap Trend", "chart": "line_chart", "x": "Day of Requirement Date"}
+          ]
+        },
+        {
+          "title": "Where the Shortage Is",
+          "kpis": [
+            {"name": "Predicted Staffing Shortage by Department", "chart": "horizontal_bar_chart",
+             "x": "department names",
+             "values": {"ICU": -0.84, "Emergency": -0.76, "...": "other depts less severe"},
+             "note": "THE headline actionable insight: ICU and Emergency drive the shortage. This breakdown is real (varies by dept)."},
+            {"name": "Staffing Shortage Forecast Trend", "chart": "line_chart", "x": "Day of Forecast Dates",
+             "confidence_band": "upper/lower gap confidence views"}
+          ]
+        }
+      ]
+    },
+
+    {
+      "role": "Referrals / Admissions Manager",
+      "level": "manager",
+      "rationale": "Owns the inbound pipeline. The volume trend matters; the status mix does NOT (uniform).",
+      "sections": [
+        {
+          "title": "Referral Pipeline",
+          "kpis": [
+            {"name": "Monthly Referral Volume", "value": 79227, "chart": "line_chart", "x": "Month of Referral Date",
+             "note": "Down 28% Jan->Dec - THIS is the story, a declining pipeline that will pressure future occupancy."},
+            {"name": "Referrals by Department", "chart": "horizontal_bar_chart", "x": "Department Name"},
+            {"name": "Referral Status Mix", "chart": "OMITTED",
+             "note": "Deliberately NOT charted as an insight. The 5 statuses are ~20% each (uniform/synthetic). Headlining 'Escalated is largest (16,111)' would be misleading."}
+          ]
+        }
+      ]
+    }
+  ],
+
+  "what_I_did_that_navigator_did_not": [
+    "Established a verified entity model + bed identity BEFORE designing anything.",
+    "Computed TRUE utilization (67.6%) instead of repeating the unreconciled 74.3%.",
+    "Refused to break occupancy down by department (degenerate) - used facility instead.",
+    "Surfaced the real actionable insight (ICU/Emergency shortage), which DOES vary by dept.",
+    "Refused to headline the referral status mix (uniform/synthetic) - omitted it with a reason.",
+    "Derived a net-new insight (152 licensed beds unstaffed) no single view states.",
+    "Attached confidence bounds as bands to their forecasts - never as standalone KPIs/persona."
+  ]
+}

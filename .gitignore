@@ -52,3 +52,14 @@ Thumbs.db
 # ── Claude Code internal ──────────────────────────────────────────────────────
 .claude/
 .agents/
+
+# ── Profiler dev artifacts & scratch (v1.0.2) ─────────────────────────────────
+_profile_*.json
+_independent_report.json
+_prof_out.txt
+_independent_analysis.py
+_deep_dive.py
+# ── Media / meeting recordings ────────────────────────────────────────────────
+*.mp4
+*.wav
+meeting_audio.txt
