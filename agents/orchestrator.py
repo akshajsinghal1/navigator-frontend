@@ -870,14 +870,16 @@ class OrchestratorAgent(BaseAgent):
                 spec   = self._chart_specs.get(kpi_id, {})
 
                 # Resolve unit first — used by both L1 and chart aggregation.
-                # Normalize verbose word-units that domain agents sometimes return:
-                #   "staff", "staffs", "fte", "people", "employees" → "" (shown as plain number)
-                #   These are count-type units where the frontend can't render them
-                #   as a symbol, and they look wrong on fractional values ("-0.7 staff").
-                _WORD_UNITS_STRIP = {"staff", "staffs", "fte", "ftes", "people", "employees",
-                                     "patients", "admissions", "units", "items", "records"}
-                raw_unit  = kpi_raw.get("l1_unit", "") or ""
-                if raw_unit.strip().lower() in _WORD_UNITS_STRIP:
+                # Strip units that are plain English words the format system can't render.
+                # Generic rule (no hardcoded word list):
+                #   pure alphabetic word  +  _infer_format maps it to "number"
+                #   → the frontend has no rendering strategy for it → strip it.
+                # Keeps: %, $, days, hours (map to percentage/currency/,.1f).
+                # Strips: staff, patients, vehicles, transactions — any workbook.
+                raw_unit = kpi_raw.get("l1_unit", "") or ""
+                if (raw_unit
+                        and raw_unit.strip().replace(" ", "").isalpha()
+                        and _infer_format(raw_unit) == "number"):
                     raw_unit = ""
                 raw_value = kpi_raw.get("l1_value")
                 kpi_unit  = raw_unit or _infer_unit(
