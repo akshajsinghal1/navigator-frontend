@@ -390,7 +390,8 @@ class PipelineRunner:
                 available_views = available_views,
                 manifest        = manifest,
                 view_cache      = view_data_cache,
-                profile         = profile,      # WorkbookProfile object — scoped slices go to chart agents
+                profile         = profile,
+                field_resolver  = hyper_schema.build_field_resolver() if hyper_schema else {},
             )
 
             log.info("Running orchestrator agent")

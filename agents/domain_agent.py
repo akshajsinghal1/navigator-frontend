@@ -39,25 +39,24 @@ from the actual data, following the computation_hint EXACTLY.
 
 DATA SOURCE PRIORITY — read before anything else
 ─────────────────────────────────────────────────
-1. ALWAYS prefer [TABLE] views (raw Hyper tables) over Tableau views.
-   [TABLE] sources have full row counts (100k, 39k, 21k rows).
-   Tableau views have pre-aggregated rows (355, 155, 55 rows) — NOT enough for accurate KPIs.
+You have a new primary tool: get_field_data(field_name)
 
-2. For ANY KPI that has a [TABLE] equivalent — use the [TABLE] source:
-   WRONG:  fetch_view_data("Occupancy Trend")           → 355 aggregated rows
-   RIGHT:  fetch_view_data("[TABLE] \"demo_bed_utilization_hourly")  → 100,800 raw rows
-           then: run_analysis("df['occupied_beds'].sum() / df['staffed_beds'].sum() * 100")
+USE get_field_data FIRST for any KPI field you need:
+  get_field_data("Occupancy %")        → fetches 100,800 raw rows, computes formula automatically
+  get_field_data("Staffing Gap %")     → fetches 21,000 rows, computes staffing_gap/required_rn × 100
+  get_field_data("labor_cost")         → fetches 7,000 rows, direct column
+  get_field_data("ed_holds")           → fetches 100,800 rows, direct column
 
-3. Compute derived metrics yourself from raw columns:
-   Occupancy %     = occupied_beds / staffed_beds × 100
-   Staffing Gap %  = staffing_gap / required_rn_count × 100
-   Productivity %  = productive_hours / (productive_hours + non_productive_hours) × 100
-   Overtime Rate   = overtime_hours / (productive_hours + non_productive_hours) × 100
+The system resolves which Hyper table to use and applies any formula automatically.
+You get the same interface as fetch_view_data but with FULL raw data (not 355 aggregated rows).
 
-4. Only use Tableau views when:
-   (a) The metric is a pre-computed ML forecast (FORECAST_OCCUPANCY, FORECAST_STAFFING_RISK)
-   (b) No [TABLE] source exists for that specific metric
-   These cases are rare — check [TABLE] sources first every time.
+USE fetch_view_data ONLY when:
+  (a) Field not found by get_field_data
+  (b) Pre-computed ML forecast views (FORECAST_OCCUPANCY, FORECAST_STAFFING_RISK)
+  (c) You need a specific view's pre-computed breakdown for raw_data (chart rendering)
+
+The FIELD RESOLVER section in your context lists every available field and its source.
+Always check it before deciding to use fetch_view_data.
 
 You now have a POWERFUL tool: run_analysis — use it when you need to explore data.
 After fetching a view with fetch_view_data, you can optionally run pandas
@@ -362,19 +361,20 @@ class DomainAgent(BaseAgent):
         connector: TableauConnector,
         workbook_luid: str,
         view_cache: dict[str, list[dict]] | None = None,
+        field_resolver: dict[str, dict] | None = None,
     ) -> None:
         super().__init__(
             model         = _MODEL,
             tools         = DOMAIN_TOOLS,
             system_prompt = _SYSTEM_PROMPT,
-            max_iterations = 25,   # increased: run_analysis adds extra turns per view
+            max_iterations = 25,
             max_tokens     = 8192,
         )
-        self._connector     = connector
-        self._workbook_luid = workbook_luid
-        self._emit_result: dict | None = None
+        self._connector      = connector
+        self._workbook_luid  = workbook_luid
+        self._emit_result:   dict | None = None
+        self._field_resolver: dict[str, dict] = field_resolver or {}
         # Cache fetched rows by view name so run_analysis can use them without re-fetching.
-        # Seeded from the profiler's already-fetched data (avoids a redundant fetch pass).
         self._row_cache: dict[str, list[dict]] = dict(view_cache) if view_cache else {}
 
     # ── run helper ───────────────────────────────────────────────────────────
@@ -423,6 +423,8 @@ class DomainAgent(BaseAgent):
     # ── tool execution ────────────────────────────────────────────────────────
 
     def _execute_tool(self, name: str, tool_input: dict[str, Any]) -> Any:
+        if name == "get_field_data":
+            return self._tool_get_field_data(tool_input)
         if name == "fetch_view_data":
             return self._tool_fetch_view_data(tool_input)
         if name == "run_analysis":
@@ -430,6 +432,89 @@ class DomainAgent(BaseAgent):
         if name == "emit_domain_result":
             return self._tool_emit_domain_result(tool_input)
         raise ToolError(f"Unknown tool: {name}")
+
+    def _tool_get_field_data(self, inp: dict) -> dict:
+        """
+        Resolve a field name → Hyper table → fetch → compute formula if needed.
+        Returns the same shape as fetch_view_data so agents use it identically.
+        """
+        from agents.analysis_sandbox import run_pandas_analysis, format_result
+
+        field_name  = inp["field_name"]
+        aggregation = inp.get("aggregation", "avg")
+
+        # Look up field in resolver
+        info = self._field_resolver.get(field_name)
+        if not info:
+            # Fuzzy fallback: try normalized match
+            norm = field_name.lower().replace(" ", "").replace("_", "").replace("%", "pct")
+            for k, v in self._field_resolver.items():
+                if k.lower().replace(" ", "").replace("_", "").replace("%", "pct") == norm:
+                    info = v
+                    break
+
+        if not info:
+            raise ToolError(
+                f"Field '{field_name}' not found in field resolver. "
+                f"Available fields: {list(self._field_resolver.keys())[:20]}"
+            )
+
+        source     = info.get("source", "direct")
+        table_key  = info.get("table", "")
+        col_name   = info.get("column", field_name)
+        formula    = info.get("formula", "")
+
+        if source == "tableau_only":
+            raise ToolError(
+                f"Field '{field_name}' requires Tableau computation. "
+                f"Use fetch_view_data with a view that contains this field instead."
+            )
+
+        # Fetch from Hyper table
+        rows = self._row_cache.get(table_key)
+        if not rows:
+            raise ToolError(
+                f"No data found for table '{table_key}'. "
+                f"Ensure Hyper extraction ran and '{table_key}' is in available_views."
+            )
+        self._row_cache[field_name] = rows  # cache under field name for run_analysis
+
+        if source == "formula" and formula:
+            # Apply formula via pandas sandbox → adds computed column to rows
+            try:
+                compute_expr = (
+                    f"import pandas as pd\n"
+                    f"df['{col_name}'] = {formula}\n"
+                    f"df['{col_name}']"
+                )
+                run_pandas_analysis(compute_expr, rows)
+                # Rebuild rows with computed column
+                import pandas as pd
+                df = pd.DataFrame(rows)
+                # Evaluate formula safely
+                computed = eval(formula, {"df": df, "__builtins__": {}})
+                df[col_name] = computed
+                rows = df.to_dict(orient="records")
+                self._row_cache[field_name] = rows
+                log.info(
+                    "get_field_data: '%s' computed via formula from %s (%d rows)",
+                    field_name, table_key, len(rows),
+                )
+            except Exception as exc:
+                log.warning("get_field_data formula eval failed for '%s': %s", field_name, exc)
+                # Fall through — return raw rows without computed column
+        else:
+            log.info(
+                "get_field_data: '%s' → direct column '%s' from %s (%d rows)",
+                field_name, col_name, table_key, len(rows),
+            )
+
+        sample_limit = len(rows) if len(rows) <= 500 else 200
+        result = summarise_rows(rows, max_rows=sample_limit)
+        result["resolved_from"] = table_key
+        result["field"]         = col_name
+        result["source"]        = source
+        return result
 
     def _tool_fetch_view_data(self, inp: dict) -> dict:
         view_name = inp["view_name"]

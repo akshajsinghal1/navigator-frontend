@@ -303,6 +303,35 @@ DOMAIN_TOOLS: list[dict] = [
     },
 
     {
+        "name": "get_field_data",
+        "description": (
+            "Fetch data for a specific FIELD directly from its Hyper raw table source. "
+            "This is the PREFERRED way to get data — use this instead of fetch_view_data "
+            "whenever you know the field name you need. "
+            "The system automatically resolves which Hyper table to use and applies any "
+            "formula needed (e.g. Occupancy % = occupied_beds / staffed_beds × 100). "
+            "Returns rows with the computed field column plus a numeric summary."
+        ),
+        "input_schema": _OBJECT(
+            {
+                "field_name": {
+                    **_STRING,
+                    "description": (
+                        "The exact field name you need, e.g. 'Occupancy %', "
+                        "'Staffing Gap %', 'labor_cost', 'ed_holds'. "
+                        "Use names from the FIELD RESOLVER section of your context."
+                    ),
+                },
+                "aggregation": {
+                    **_STRING,
+                    "description": "How to aggregate for the L1 value: sum | avg | count | max | min (default: avg)",
+                },
+            },
+            required=["field_name"],
+        ),
+    },
+
+    {
         "name": "emit_domain_result",
         "description": (
             "Emit the analysis result for this domain. "

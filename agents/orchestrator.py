@@ -523,6 +523,7 @@ class OrchestratorAgent(BaseAgent):
         manifest = None,   # pipeline.manifest.WorkbookManifest | None
         view_cache: dict[str, list[dict]] | None = None,
         profile = None,    # pipeline.profiler.WorkbookProfile | None
+        field_resolver: dict[str, dict] | None = None,  # field → Hyper source mapping
     ) -> None:
         super().__init__(
             model          = _MODEL,
@@ -537,7 +538,8 @@ class OrchestratorAgent(BaseAgent):
         self._available_views = available_views or []
         self._manifest        = manifest
         self._view_cache      = view_cache or {}
-        self._profile         = profile    # WorkbookProfile — source for ViewProfile slices
+        self._profile         = profile           # WorkbookProfile — source for ViewProfile slices
+        self._field_resolver  = field_resolver or {}  # field → Hyper source mapping
 
         # ── Run metrics: accumulated throughout the pipeline, saved at the end ──
         self._run_metrics: dict[str, Any] = {}
@@ -719,18 +721,19 @@ class OrchestratorAgent(BaseAgent):
         domain_cache = {v: self._view_cache[v] for v in relevant_views if v in self._view_cache}
 
         with self._domain_sem:   # max 5 domain agents run concurrently
-            agent  = DomainAgent(self._connector, self._workbook_luid, view_cache=domain_cache)
+            agent  = DomainAgent(self._connector, self._workbook_luid,
+                                 view_cache=domain_cache, field_resolver=self._field_resolver)
             result = agent.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
 
-        # Retry once if the agent finished without emitting (Gemini returned text
-        # instead of calling the tool — happens when API is slow / overloaded)
+        # Retry once if the agent finished without emitting
         kpis = result.get("kpis", [])
         if not kpis:
             log.warning(
                 "Domain '%s' returned 0 KPIs on first attempt — retrying once",
                 domain_name,
             )
-            agent2  = DomainAgent(self._connector, self._workbook_luid, view_cache=domain_cache)
+            agent2  = DomainAgent(self._connector, self._workbook_luid,
+                                  view_cache=domain_cache, field_resolver=self._field_resolver)
             result2 = agent2.analyze(domain_name, relevant_fields, relevant_views, kpi_designs)
             if result2.get("kpis"):
                 result = result2
