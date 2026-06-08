@@ -278,6 +278,30 @@ Use them in NEW ways to surface NEW insight. Several techniques:
    A "Total Sales" KPI for a CFO is a "Revenue Forecast Gap"; for a Sales Manager
    it's "Quota Coverage". Same field, totally different KPI definition + meaning.
 
+Step 0 — DATA SOURCE PRIORITY (read before everything else)
+──────────────────────────────────────────────────────────
+Your input includes HYPER EXTRACT tables (prefixed with [TABLE]).
+These raw tables are the PRIMARY data source for ALL KPI computation.
+
+RULE 1 — ALWAYS prefer [TABLE] over Tableau views for data:
+  [TABLE] demo_bed_utilization_hourly  →  100,800 hourly rows  ← USE THIS
+  Occupancy Trend view                 →      355 aggregated rows  ← avoid for data
+
+RULE 2 — Tableau views are for REFERENCE ONLY:
+  Use views to understand what metrics exist and business context.
+  Use [TABLE] sources to actually fetch and compute the data.
+
+RULE 3 — Compute derived metrics yourself from raw columns:
+  The HYPER EXTRACT section lists calculated field formulas.
+  Use run_analysis in domain agents to compute them from raw columns.
+  Example: Occupancy % = occupied_beds / staffed_beds × 100
+           (compute from demo_bed_utilization_hourly, not from Occupancy Trend view)
+
+RULE 4 — Only fall back to Tableau views when:
+  (a) The metric is a pre-computed ML forecast (FORECAST_OCCUPANCY, FORECAST_STAFFING_RISK)
+  (b) No [TABLE] source exists for that metric
+  Both are rare — most metrics can be computed from raw [TABLE] columns.
+
 Step 0a — READ VIEW_QUALITY BEFORE DESIGNING DOMAINS
 Your input includes VIEW_QUALITY — a compact, deterministic index of every data view.
 Before assigning any view to a domain, check its entry:

@@ -35,7 +35,29 @@ You are a domain data agent for Navigator — a business intelligence platform.
 Your mission
 ────────────
 The orchestrator has DESIGNED the KPIs. Your job is to COMPUTE them faithfully
-from the actual view data, following the computation_hint EXACTLY.
+from the actual data, following the computation_hint EXACTLY.
+
+DATA SOURCE PRIORITY — read before anything else
+─────────────────────────────────────────────────
+1. ALWAYS prefer [TABLE] views (raw Hyper tables) over Tableau views.
+   [TABLE] sources have full row counts (100k, 39k, 21k rows).
+   Tableau views have pre-aggregated rows (355, 155, 55 rows) — NOT enough for accurate KPIs.
+
+2. For ANY KPI that has a [TABLE] equivalent — use the [TABLE] source:
+   WRONG:  fetch_view_data("Occupancy Trend")           → 355 aggregated rows
+   RIGHT:  fetch_view_data("[TABLE] \"demo_bed_utilization_hourly")  → 100,800 raw rows
+           then: run_analysis("df['occupied_beds'].sum() / df['staffed_beds'].sum() * 100")
+
+3. Compute derived metrics yourself from raw columns:
+   Occupancy %     = occupied_beds / staffed_beds × 100
+   Staffing Gap %  = staffing_gap / required_rn_count × 100
+   Productivity %  = productive_hours / (productive_hours + non_productive_hours) × 100
+   Overtime Rate   = overtime_hours / (productive_hours + non_productive_hours) × 100
+
+4. Only use Tableau views when:
+   (a) The metric is a pre-computed ML forecast (FORECAST_OCCUPANCY, FORECAST_STAFFING_RISK)
+   (b) No [TABLE] source exists for that specific metric
+   These cases are rare — check [TABLE] sources first every time.
 
 You now have a POWERFUL tool: run_analysis — use it when you need to explore data.
 After fetching a view with fetch_view_data, you can optionally run pandas
@@ -429,7 +451,7 @@ class DomainAgent(BaseAgent):
             # Cache raw rows so run_analysis can use them without re-fetching
             self._row_cache[view_name] = rows
 
-        # Pass all rows to the agent when the view is small (≤500 rows) so it
+# Pass all rows to the agent when the view is small (≤500 rows) so it
         # can compute ANY filtered/conditional metric accurately from the sample.
         # For larger views, cap at 200 to keep context manageable.
         sample_limit = len(rows) if len(rows) <= 500 else 200

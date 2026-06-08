@@ -93,25 +93,204 @@ class HyperSchema:
         """Return synthetic view names for all tables — for available_views list."""
         return [f"[TABLE] {t.table_name}" for t in self.tables]
 
+    # ── Field resolver ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _norm(name: str) -> str:
+        """Normalize field name for fuzzy matching."""
+        import re
+        # Strip Tableau cruft: table qualifiers like "(Demo Bed Utilization Hourly)"
+        name = re.sub(r'\s*\([^)]*\)', '', name)
+        return re.sub(r'[^a-z0-9]', '', name.lower())
+
+    def _find_hyper_col(self, field_name: str) -> tuple[str, str] | None:
+        """
+        Find (table_name, column_name) in Hyper tables that best matches field_name.
+        Returns None if no match found.
+        """
+        norm_field = self._norm(field_name)
+        best_table:  str | None = None
+        best_col:    str | None = None
+        best_score:  int = 0
+
+        for table in self.tables:
+            for col in table.columns:
+                norm_col = self._norm(col.name)
+                # Exact normalized match
+                if norm_col == norm_field:
+                    return table.table_name, col.name
+                # Partial match scoring
+                score = 0
+                if norm_field in norm_col or norm_col in norm_field:
+                    score = min(len(norm_field), len(norm_col))
+                if score > best_score:
+                    best_score = score
+                    best_table = table.table_name
+                    best_col   = col.name
+
+        if best_score >= 4 and best_table and best_col:   # min 4 chars overlap
+            return best_table, best_col
+        return None
+
+    def _translate_formula(self, formula: str) -> tuple[str, list[str]] | None:
+        """
+        Translate a Tableau formula to a Python/pandas expression.
+        Returns (python_expr, [referenced_fields]) or None if too complex.
+
+        Handles: simple arithmetic, AVG/SUM/IF wrappers, field references.
+        """
+        import re
+
+        # Extract all Tableau field references [Field Name]
+        refs = re.findall(r'\[([^\]]+)\]', formula)
+        if not refs:
+            return None
+
+        # Skip complex formulas (LOD, window functions, nested IF)
+        skip_patterns = [r'\{', r'WINDOW_', r'LOOKUP', r'PREVIOUS_VALUE',
+                         r'RUNNING_', r'INDEX\(', r'RANK\(']
+        for pat in skip_patterns:
+            if re.search(pat, formula, re.IGNORECASE):
+                return None
+
+        # Translate each [Field Name] → df['hyper_col']
+        expr = formula.strip()
+        field_map: dict[str, str] = {}
+
+        for ref in refs:
+            match = self._find_hyper_col(ref)
+            if not match:
+                return None   # can't resolve all fields → skip
+            _, hyper_col = match
+            field_map[ref] = hyper_col
+            expr = expr.replace(f"[{ref}]", f"df['{hyper_col}']")
+
+        # Remove aggregation wrappers — per-row computation
+        expr = re.sub(r'\bAVG\s*\(', '(', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bSUM\s*\(', '(', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bMIN\s*\(', '(', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bMAX\s*\(', '(', expr, flags=re.IGNORECASE)
+
+        # Simple IF → replace with np.where (skip complex nested IF)
+        if re.search(r'\bIF\b', expr, re.IGNORECASE):
+            return None   # too complex for simple translation
+
+        return expr.strip(), list(field_map.values())
+
+    def build_field_resolver(self) -> dict[str, dict]:
+        """
+        Build a complete mapping: field_name → {source, table, column, formula}
+
+        For direct columns:
+          "occupancy_percent" → {source: "direct", table: "demo_bed_utilization_hourly",
+                                  column: "occupancy_percent"}
+
+        For calculated fields:
+          "Occupancy %" → {source: "formula", table: "demo_bed_utilization_hourly",
+                            column: "Occupancy %",
+                            formula: "df['occupied_beds'] / df['staffed_beds'] * 100",
+                            refs: ["occupied_beds", "staffed_beds"]}
+        """
+        resolver: dict[str, dict] = {}
+
+        # 1. Direct columns — every raw column in every Hyper table
+        for table in self.tables:
+            for col in table.columns:
+                resolver[col.name] = {
+                    "source": "direct",
+                    "table":  f"[TABLE] {table.table_name}",
+                    "column": col.name,
+                    "dtype":  col.data_type,
+                }
+
+        # 2. Calculated fields — translate Tableau formulas to Python
+        for cf in self.calc_fields:
+            result = self._translate_formula(cf.formula)
+            if result:
+                py_expr, refs = result
+                # Determine primary table from first referenced column
+                primary = None
+                for ref_col in refs:
+                    for table in self.tables:
+                        if any(c.name == ref_col for c in table.columns):
+                            primary = f"[TABLE] {table.table_name}"
+                            break
+                    if primary:
+                        break
+
+                resolver[cf.name] = {
+                    "source":  "formula",
+                    "table":   primary or "unknown",
+                    "column":  cf.name,
+                    "formula": py_expr,
+                    "refs":    refs,
+                    "dtype":   cf.data_type,
+                }
+            else:
+                # Formula too complex to translate — note it as Tableau-only
+                resolver[cf.name] = {
+                    "source":  "tableau_only",
+                    "formula": cf.formula[:100],
+                    "note":    "Complex formula — fetch from Tableau view",
+                }
+
+        return resolver
+
+    def field_resolver_text(self) -> str:
+        """
+        Compact text for the orchestrator showing how to get every field from Hyper.
+        """
+        resolver = self.build_field_resolver()
+        lines = [
+            "",
+            "=== FIELD RESOLVER — how to get every field from Hyper ===",
+            "For each KPI field, fetch from [TABLE] source and compute if needed.",
+            "",
+        ]
+        for field_name, info in resolver.items():
+            src = info["source"]
+            if src == "direct":
+                lines.append(
+                    f"  {field_name:<40} DIRECT  {info['table']}  col={info['column']}"
+                )
+            elif src == "formula":
+                lines.append(
+                    f"  {field_name:<40} FORMULA {info['table']}"
+                )
+                lines.append(
+                    f"    → {info['formula'][:80]}"
+                )
+            # skip tableau_only — too complex, agent uses view
+        return "\n".join(lines)
+
     def summary_text(self) -> str:
         """Compact text block for the orchestrator system prompt."""
         lines = [
-            f"HYPER EXTRACT — {self.workbook_name}",
+            "=== HYPER EXTRACT — PRIMARY DATA SOURCE ===",
+            "IMPORTANT: These raw tables are the PRIMARY source for ALL KPI data.",
+            "Always use [TABLE] views over Tableau views for data computation.",
+            "Tableau views are for reference/business logic only.",
             f"  Tables  : {len(self.tables)}",
             f"  Columns : {self.total_columns} raw",
             f"  Rows    : {self.total_rows:,} total across all tables",
             "",
         ]
         for t in self.tables:
-            lines.append(f"  {t.table_name}  ({t.row_count:,} rows, {len(t.columns)} cols)")
+            lines.append(f"  [TABLE] {t.table_name}  ({t.row_count:,} rows)")
             for c in t.columns:
                 lines.append(f"    {c.name:<40} {c.data_type}")
+            if t.sample_rows:
+                lines.append(f"    sample row: {t.sample_rows[0]}")
+            lines.append("")
 
         if self.calc_fields:
-            lines += ["", f"  Calculated fields ({len(self.calc_fields)}):"]
+            lines += [
+                f"Derived metrics — compute these from raw columns above:",
+                f"(Use run_analysis to compute these in domain agents)",
+            ]
             for cf in self.calc_fields:
-                formula_short = cf.formula[:80].replace("\n", " ")
-                lines.append(f"    {cf.name:<35} = {formula_short}")
+                formula_short = cf.formula[:100].replace("\n", " ")
+                lines.append(f"  {cf.name:<35} = {formula_short}")
 
         return "\n".join(lines)
 
@@ -190,7 +369,7 @@ def _read_hyper(hyper_path: str, sample_rows: int = 5, max_full_rows: int = 0) -
                         full_data = _rows_to_dicts(raw_full)
 
                         # Clean table name (strip hash suffix)
-                        display_name = str(table_name).strip('"').split(".")[-1]
+                        display_name = str(table_name).strip('"').split(".")[-1].strip('"')
                         # Remove hash suffix like _BB3F763CC26F4F9E...
                         import re
                         display_name = re.sub(r'_[A-F0-9]{16,}$', '', display_name)

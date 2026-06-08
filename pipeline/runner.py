@@ -335,7 +335,7 @@ class PipelineRunner:
             if not offline:
                 try:
                     from pipeline.hyper_extractor import extract_from_workbook
-                    from tableau.connector import TableauConnector as _TC
+                    _TC = TableauConnector  # already imported at top of module
                     # Use a separate TSC-backed TableauConnector for workbook download
                     # (conn is a VdsClient which doesn't have TSC workbooks.download)
                     with _TC(
@@ -362,10 +362,10 @@ class PipelineRunner:
                             total_v_enriched = len(view_data_cache)
                             profile = profile_workbook(view_data_cache, total_views=total_v_enriched)
                             profile_text = format_profile_for_agent(profile)
-                        # Add [TABLE] synthetic view names to available_views so the
-                        # orchestrator knows domain agents can fetch raw table data
+                        # Put [TABLE] names FIRST in available_views — they are the
+                        # primary data source. Tableau views follow as fallback reference.
                         table_view_names = hyper_schema.table_view_names()
-                        available_views  = list(available_views) + table_view_names
+                        available_views  = table_view_names + list(available_views)
                         log.info(
                             "Hyper: %d tables, %d raw cols, %s rows, %d calc fields — "
                             "added %d table views to available_views",
@@ -373,8 +373,9 @@ class PipelineRunner:
                             f"{hyper_schema.total_rows:,}", len(hyper_schema.calc_fields),
                             len(table_view_names),
                         )
-                        # Append hyper summary to profile_text for orchestrator
-                        profile_text = (profile_text or "") + "\n\n" + hyper_summary
+                        # Append hyper summary + field resolver to profile_text for orchestrator
+                        field_resolver = hyper_schema.field_resolver_text()
+                        profile_text   = (profile_text or "") + "\n\n" + hyper_summary + "\n" + field_resolver
                 except Exception as exc:
                     log.warning("Hyper extraction skipped: %s", exc)
                     hyper_schema = None
