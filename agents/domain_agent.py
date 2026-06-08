@@ -297,6 +297,31 @@ Sending more than 20 rows per KPI will cause a generation failure.
 Note: you receive many more rows via fetch_view_data (up to all rows for small
 views) — use those to compute accurate values. But emit only 20 rows in raw_data.
 
+Priority scoring — assign for EVERY KPI
+────────────────────────────────────────
+Set priority (0-100) based on how urgently this persona needs to act on it TODAY:
+
+  80-100  CRITICAL — assign when ANY of:
+          • trend_direction = "down" AND trend_pct < -10%
+          • anomaly detected (e.g. spike, sudden drop, threshold breach)
+          • risk flag present AND value is negative
+          • KPI is the primary reason a persona exists (e.g. Staffing Gap % for Staffing Coordinator)
+
+  60-79   IMPORTANT — assign when:
+          • Stable but this is a core metric the persona tracks daily
+          • Moderate decline (trend_pct between -5% and -10%)
+          • Supporting metric needed to explain a critical KPI
+
+  40-59   SUPPLEMENTARY — assign when:
+          • Trending positively or flat, no immediate concern
+          • Context metric (benchmarks, historical reference)
+          • Secondary breakdown of a higher-priority KPI
+
+  0-39    BACKGROUND — assign when:
+          • Performing well, no action needed
+          • Informational only, rarely changes
+          • Low relevance to this persona's decisions
+
 Call emit_domain_result ONCE when you have processed all KPI designs.
 """
 

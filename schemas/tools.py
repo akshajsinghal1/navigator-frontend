@@ -420,9 +420,23 @@ DOMAIN_TOOLS: list[dict] = [
                                         {"type": "null"},
                                     ],
                                 },
+                                "priority": {
+                                    "type": "integer",
+                                    "description": (
+                                        "Relevancy score for this persona (0-100). "
+                                        "80-100: critical today — risk flagged, bad trend, anomaly detected. "
+                                        "60-79: important context — stable but core metric for this role. "
+                                        "40-59: supplementary — useful but not primary decision-making. "
+                                        "0-39: background — informational only. "
+                                        "Score based on: trend severity, risk presence, anomaly, "
+                                        "and how central this metric is to the persona's daily decisions."
+                                    ),
+                                    "minimum": 0,
+                                    "maximum": 100,
+                                },
                             },
                             required=["id", "name", "description", "layer",
-                                      "l1_view_name", "l1_field_name"],
+                                      "l1_view_name", "l1_field_name", "priority"],
                         )
                     ),
                     "description": "List of KPIs analyzed in this domain",

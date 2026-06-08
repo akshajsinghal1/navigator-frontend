@@ -63,6 +63,7 @@ export interface NavigatorKPI {
   name:             string;
   description:      string;
   layer?:           "L1" | "L2" | "L3";
+  priority?:        number;   // 0-100 relevancy score assigned by domain agent
   l1:               NavigatorL1;
   trend_direction:  "up" | "down" | "flat" | null;
   trend_pct:        number | null;

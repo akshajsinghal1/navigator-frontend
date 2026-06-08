@@ -1062,6 +1062,7 @@ class OrchestratorAgent(BaseAgent):
                     name            = kpi_raw["name"],
                     description     = kpi_raw.get("description", ""),
                     layer           = kpi_raw.get("layer", "L1"),
+                    priority        = int(kpi_raw.get("priority", 50)),
                     l1              = l1,
                     l2              = l2,
                     l2_projection   = l2_projection,

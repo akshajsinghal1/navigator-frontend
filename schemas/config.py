@@ -125,6 +125,11 @@ class KPI(BaseModel):
     name: str                          # display name, e.g. "Total Sales"
     description: str                   # one-sentence description
     layer: Literal["L1", "L2", "L3"] = "L1"  # L1=direct, L2=deterministic formula, L3=predictive ML
+    priority: int = Field(default=50, ge=0, le=100)
+    # 80-100 = critical for this persona today (risk, bad trend, anomaly)
+    # 60-79  = important context (stable but core metric)
+    # 40-59  = supplementary (useful but not primary)
+    # 0-39   = background / informational
     l1: Optional[L1Data] = None
     l2: Optional[L2Data] = None
     l2_projection: Optional[L2Projection] = None  # agent-defined projection method for 7D/30D

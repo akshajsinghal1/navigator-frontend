@@ -1314,6 +1314,17 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
   const handleExpand = useCallback((kpi: NavigatorKPI) => setExpandedKpi(kpi), []);
   const handleClose  = useCallback(() => setExpandedKpi(null), []);
 
+  // Per-section "show more" state — collapsed by default if section has > DEFAULT_VISIBLE KPIs
+  const DEFAULT_VISIBLE = 6;
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const toggleSection = useCallback((sectionId: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId);
+      return next;
+    });
+  }, []);
+
   // Action item click — find the matching KPI and open its modal
   const handleActionClick = useCallback((kpiName: string) => {
     const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1367,64 +1378,110 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
       </div>
 
       {/* ── KPI sections ── */}
-      {persona.dashboard_sections.map((section) => (
-        <section key={section.id}>
+      {persona.dashboard_sections.map((section) => {
+        // Sort by priority desc — highest relevancy first
+        const sorted = [...section.kpis].sort(
+          (a, b) => (b.priority ?? 50) - (a.priority ?? 50)
+        );
+        const isExpanded = expandedSections.has(section.id);
+        const visible    = isExpanded ? sorted : sorted.slice(0, DEFAULT_VISIBLE);
+        const hiddenCount = sorted.length - DEFAULT_VISIBLE;
 
-          {/* Section header — compact, no description to save vertical space */}
-          <div style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:          8,
-            marginBottom: 8,
-          }}>
-            <span style={{
-              fontFamily:    CHART_NUM_FONT,
-              fontSize:      10,
-              fontWeight:    700,
-              color:         palette.ink4,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-            }}>
-              {section.title.replace(/_/g, " ")}
-            </span>
-            <span style={{
-              fontFamily: CHART_NUM_FONT,
-              fontSize:   10,
-              color:      palette.ink4,
-              marginLeft: "auto",
-            }}>
-              {section.kpis.length} KPI{section.kpis.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+        return (
+          <section key={section.id}>
 
-          {/* Compact KPI tile grid — 2 columns, smart spans */}
-          <div style={{
-            display:             "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap:                 10,
-          }}>
-            {section.kpis.map((kpi, index) => (
-              <div
-                key={kpi.id ?? `${section.id}-${index}`}
+            {/* Section header */}
+            <div style={{
+              display:      "flex",
+              alignItems:   "center",
+              gap:          8,
+              marginBottom: 8,
+            }}>
+              <span style={{
+                fontFamily:    CHART_NUM_FONT,
+                fontSize:      10,
+                fontWeight:    700,
+                color:         palette.ink4,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}>
+                {section.title.replace(/_/g, " ")}
+              </span>
+              <span style={{
+                fontFamily: CHART_NUM_FONT,
+                fontSize:   10,
+                color:      palette.ink4,
+                marginLeft: "auto",
+              }}>
+                {visible.length}/{sorted.length} KPI{sorted.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Compact KPI tile grid — 2 columns, smart spans */}
+            <div style={{
+              display:             "grid",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              gap:                 10,
+            }}>
+              {visible.map((kpi, index) => (
+                <div
+                  key={kpi.id ?? `${section.id}-${index}`}
+                  style={{
+                    gridColumn:     `span ${kpiColSpan(kpi, index, visible.length)}`,
+                    animation:      "kpiEnter 0.28s ease both",
+                    animationDelay: `${index * 0.04}s`,
+                    minWidth:       0,
+                  }}
+                >
+                  <KpiTile
+                    kpi={kpi}
+                    workbookId={workbookId}
+                    period={period}
+                    onExpand={handleExpand}
+                    colSpan={kpiColSpan(kpi, index, visible.length)}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Show more / Show less button */}
+            {sorted.length > DEFAULT_VISIBLE && (
+              <button
+                type="button"
+                onClick={() => toggleSection(section.id)}
                 style={{
-                  gridColumn:     `span ${kpiColSpan(kpi, index, section.kpis.length)}`,
-                  animation:      "kpiEnter 0.28s ease both",
-                  animationDelay: `${index * 0.04}s`,
-                  minWidth:       0,
+                  marginTop:     8,
+                  width:         "100%",
+                  padding:       "6px 0",
+                  background:    "transparent",
+                  border:        `1px dashed ${palette.line2}`,
+                  borderRadius:  6,
+                  cursor:        "pointer",
+                  fontFamily:    CHART_NUM_FONT,
+                  fontSize:      10,
+                  fontWeight:    700,
+                  letterSpacing: "0.06em",
+                  color:         palette.ink4,
+                  textTransform: "uppercase",
+                  transition:    "border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={e => {
+                  (e.target as HTMLButtonElement).style.borderColor = palette.line2;
+                  (e.target as HTMLButtonElement).style.color = palette.ink3;
+                }}
+                onMouseLeave={e => {
+                  (e.target as HTMLButtonElement).style.borderColor = palette.line2;
+                  (e.target as HTMLButtonElement).style.color = palette.ink4;
                 }}
               >
-                <KpiTile
-                  kpi={kpi}
-                  workbookId={workbookId}
-                  period={period}
-                  onExpand={handleExpand}
-                  colSpan={kpiColSpan(kpi, index, section.kpis.length)}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
+                {isExpanded
+                  ? `▲ Show less`
+                  : `▼ Show ${hiddenCount} more KPI${hiddenCount !== 1 ? "s" : ""}`}
+              </button>
+            )}
+          </section>
+        );
+      })}
 
       {/* ── KPI detail modal ── */}
       {expandedKpi && (() => {
