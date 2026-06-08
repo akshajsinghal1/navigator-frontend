@@ -324,6 +324,55 @@ class PipelineRunner:
                     log.warning("Profiler failed (continuing without it): %s", exc)
                     profile = None
 
+            # ── step 5.6: HYPER EXTRACTION — richer schema from embedded datasource ──
+            # Downloads the .twbx, reads the .hyper extract for raw table schemas
+            # (89 columns, actual row counts, sample rows) and parsed calculated
+            # field formulas from the .twb XML.  The HyperSchema summary is appended
+            # to profile_text so agents have full datasource context beyond the 33
+            # view-exposed columns.  Gracefully skipped if no extract or no Hyper API.
+            hyper_schema = None
+            hyper_summary = ""
+            if not offline:
+                try:
+                    from pipeline.hyper_extractor import extract_from_workbook
+                    from tableau.connector import TableauConnector as _TC
+                    # Use a separate TSC-backed TableauConnector for workbook download
+                    # (conn is a VdsClient which doesn't have TSC workbooks.download)
+                    with _TC(
+                        server_url = self._creds["tableau_server_url"],
+                        site_name  = self._creds["tableau_site_name"],
+                        pat_name   = self._creds["tableau_pat_name"],
+                        pat_secret = self._creds["tableau_pat_secret"],
+                    ) as _tsc_conn:
+                        hyper_schema = extract_from_workbook(
+                            workbook_luid  = workbook_luid,
+                            workbook_name  = wb_meta["name"],
+                            tableau_server = _tsc_conn._server,
+                            sample_rows    = 5,
+                        )
+                    if hyper_schema:
+                        hyper_summary = hyper_schema.summary_text()
+                        # Merge table-level sample rows into profiler views dict
+                        # so profile_workbook can see all raw columns too
+                        hyper_views = hyper_schema.as_profiler_views()
+                        view_data_cache.update(hyper_views)
+                        # Re-run profiler with enriched view cache
+                        if profile is not None:
+                            from pipeline.profiler import profile_workbook, format_profile_for_agent
+                            total_v_enriched = len(view_data_cache)
+                            profile = profile_workbook(view_data_cache, total_views=total_v_enriched)
+                            profile_text = format_profile_for_agent(profile)
+                        log.info(
+                            "Hyper: %d tables, %d raw cols, %s rows, %d calc fields",
+                            len(hyper_schema.tables), hyper_schema.total_columns,
+                            f"{hyper_schema.total_rows:,}", len(hyper_schema.calc_fields),
+                        )
+                        # Append hyper summary to profile_text for orchestrator
+                        profile_text = (profile_text or "") + "\n\n" + hyper_summary
+                except Exception as exc:
+                    log.warning("Hyper extraction skipped: %s", exc)
+                    hyper_schema = None
+
             # ── step 6: run orchestrator (uses same `conn` — VdsClient) ───────
             from agents.orchestrator import OrchestratorAgent
 
