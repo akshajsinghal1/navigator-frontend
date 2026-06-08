@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Navigator — Action Items Layout Options</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #F4F1EA; font-family: Georgia, serif; color: #2C2B26; }
+
+.page-label { background: #2C2B26; color: #fff; padding: 8px 20px; font-size: 12px;
+              font-family: monospace; letter-spacing: 0.06em; }
+
+/* ── NAV ── */
+.nav { background: #F9F7F2; border-bottom: 1px solid #E5E0D5; padding: 10px 28px;
+       display: flex; align-items: center; gap: 14px; }
+.logo { font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.sep  { width: 1px; height: 14px; background: #D5CFC4; }
+.wb   { font-size: 11px; color: #7A7468; font-family: monospace; }
+.personas { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.pb { padding: 4px 10px; border-radius: 4px; border: 1px solid #D5CFC4; font-size: 10px;
+      font-family: monospace; cursor: pointer; background: transparent; color: #7A7468; }
+.pb.active { background: #C8902A; color: #fff; border-color: #C8902A; }
+/* action bell */
+.action-bell { position: relative; padding: 4px 10px; border-radius: 4px;
+               border: 1px solid #E5484D40; background: #E5484D12; color: #E5484D;
+               font-size: 10px; font-family: monospace; cursor: pointer;
+               display: flex; align-items: center; gap: 5px; font-weight: 700; }
+.action-bell-dot { width: 7px; height: 7px; border-radius: 50%; background: #E5484D;
+                   box-shadow: 0 0 5px #E5484D; }
+
+.main { max-width: 1300px; margin: 0 auto; padding: 20px 28px; }
+
+/* ── SUMMARY CARDS ── */
+.brief-row { display: grid; gap: 10px; margin-bottom: 14px; }
+.brief-row.opt-a { grid-template-columns: repeat(3, 1fr); }
+.brief-row.opt-b { grid-template-columns: repeat(3, 1fr); }
+.brief-row.opt-c { grid-template-columns: 2fr 2fr 1.4fr; }
+
+.bcard { background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px;
+          padding: 14px; border-left: 4px solid transparent; }
+.bcard.c { border-left-color: #E5484D; }
+.bcard.w { border-left-color: #F0C040; }
+.bcard.s { border-left-color: #5BAD7A; }
+
+.bsig { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.bdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bdot.c { background: #E5484D; }
+.bdot.w { background: #F0C040; }
+.bdot.s { background: #5BAD7A; }
+.blabel { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+          font-family: monospace; }
+.blabel.c { color: #E5484D; }
+.blabel.w { color: #B8900A; }
+.blabel.s { color: #3A8A5A; }
+
+.btitle { font-size: 12px; font-weight: 700; color: #2C2B26; margin-bottom: 4px; }
+.bbody  { font-size: 11px; color: #5A5650; line-height: 1.5; }
+
+/* Action inside card (Option A) */
+.baction { margin-top: 8px; padding: 6px 8px; background: #F0EDE5; border-radius: 4px;
+           font-size: 10px; color: #2C2B26; border-left: 3px solid #E5484D; line-height: 1.4; }
+.baction.w { border-left-color: #F0C040; }
+.baction.s { border-left-color: #5BAD7A; color: #5A5650; }
+.action-prefix { font-family: monospace; font-weight: 700; font-size: 9px;
+                 letter-spacing: 0.06em; display: block; margin-bottom: 2px; }
+.action-prefix.c { color: #E5484D; }
+.action-prefix.w { color: #B8900A; }
+.action-prefix.s { color: #3A8A5A; }
+
+/* Actions panel card (Option C) */
+.action-panel-card { background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px;
+                     padding: 14px; display: flex; flex-direction: column; }
+.ap-header { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+             font-family: monospace; color: #7A7468; margin-bottom: 10px;
+             display: flex; align-items: center; justify-content: space-between; }
+.ap-count { background: #E5484D18; color: #E5484D; border: 1px solid #E5484D40;
+            border-radius: 3px; padding: 1px 5px; font-size: 9px; }
+.ap-item { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0;
+           border-bottom: 1px solid #F0EDE5; font-size: 10px; color: #3A3730; line-height: 1.4; }
+.ap-item:last-child { border-bottom: none; }
+.ap-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.ap-dot.c { background: #E5484D; }
+.ap-dot.w { background: #F0C040; }
+.ap-dot.s { background: #5BAD7A; }
+
+/* ── KPI TILES ── */
+.section-hdr { display: flex; align-items: center; justify-content: space-between;
+               margin-bottom: 8px; }
+.sh-title { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+            color: #7A7468; font-family: monospace; }
+.sh-count  { font-size: 10px; color: #9A9490; font-family: monospace; }
+.kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kpi { background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px;
+       padding: 12px 14px; border-left: 3px solid transparent; }
+.kpi.c { border-left-color: #E5484D; }
+.kpi.w { border-left-color: #F0C040; }
+.kpi.s { border-left-color: #5BAD7A; }
+.kpi-hdr { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+.kpi-dot { width: 6px; height: 6px; border-radius: 50%; }
+.kpi-dot.c { background: #E5484D; }
+.kpi-dot.w { background: #F0C040; }
+.kpi-dot.s { background: #5BAD7A; }
+.kpi-name { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+            color: #5A5650; font-family: monospace; }
+.kpi-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 1px 4px;
+             border-radius: 3px; font-family: monospace; color: #C8902A;
+             background: #C8902A18; border: 1px solid #C8902A40; }
+.kpi-val { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-family: monospace; }
+.kpi-val.c { color: #E5484D; }
+.kpi-val.w { color: #B8900A; }
+.kpi-val.n { color: #2C2B26; }
+.kpi-trend { font-size: 10px; color: #7A7468; margin-top: 2px; }
+.kpi-hint { background: #F0EDE5; border-radius: 3px; padding: 4px 6px; margin-top: 6px;
+            font-size: 9px; color: #5A5650; font-family: monospace; }
+
+/* ── SIDE PANEL (Option B) ── */
+.panel-overlay { position: fixed; inset: 0; background: rgba(44,43,38,0.3); z-index: 50;
+                 display: none; }
+.panel-overlay.open { display: block; }
+.side-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 340px;
+              background: #F9F7F2; border-left: 1px solid #E5E0D5; z-index: 51;
+              padding: 24px; overflow-y: auto; transform: translateX(100%);
+              transition: transform 0.25s ease; }
+.side-panel.open { transform: translateX(0); }
+.sp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.sp-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+            font-family: monospace; color: #2C2B26; }
+.sp-close { background: none; border: 1px solid #D5CFC4; border-radius: 50%; width: 26px; height: 26px;
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.sp-item { background: #F4F1EA; border: 1px solid #E5E0D5; border-radius: 6px; padding: 12px;
+           margin-bottom: 8px; border-left: 3px solid transparent; }
+.sp-item.c { border-left-color: #E5484D; }
+.sp-item.w { border-left-color: #F0C040; }
+.sp-item.s { border-left-color: #5BAD7A; }
+.sp-kpi  { font-size: 9px; font-family: monospace; color: #9A9490; text-transform: uppercase;
+           letter-spacing: 0.06em; margin-bottom: 3px; }
+.sp-text { font-size: 11px; color: #2C2B26; line-height: 1.5; }
+.sp-link { font-size: 10px; color: #C8902A; font-family: monospace; margin-top: 4px; cursor: pointer; }
+
+/* option labels */
+.opt-label { background: #C8902A; color: #fff; font-size: 11px; font-family: monospace;
+             font-weight: 700; padding: 4px 10px; border-radius: 3px; display: inline-block;
+             margin-bottom: 10px; }
+.opt-desc { font-size: 11px; color: #7A7468; margin-bottom: 12px; font-family: monospace; }
+.divider { border: none; border-top: 2px dashed #D5CFC4; margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- OPTION A: Action hint INSIDE each summary card                     -->
+<!-- No new section. No extra scroll. Each card has a small action line.-->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+
+<div class="page-label">OPTION A — Action hint inside each summary card (no new section, zero extra scroll)</div>
+
+<div class="nav">
+  <div class="logo">NAVIGATOR</div><div class="sep"></div>
+  <div class="wb">Navigator_Predictive_Analytics_v2_Extract</div>
+  <div class="personas">
+    <button class="pb active">Chief Operating Officer</button>
+    <button class="pb">Capacity Manager</button>
+    <button class="pb">Staffing Coordinator</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="brief-row opt-a">
+    <div class="bcard c">
+      <div class="bsig"><div class="bdot c"></div><span class="blabel c">Critical — Action Required</span></div>
+      <div class="btitle">ICU &amp; Emergency Staffing at Breaking Point</div>
+      <div class="bbody">Predicted shortage reaches -0.84 FTE in ICU and -0.76 FTE in Emergency. Gap worsened 42.9% from last period.</div>
+      <div class="baction">
+        <span class="action-prefix c">→ ACTION</span>
+        Contact on-call pool for ICU immediately. Escalate to Nursing Director.
+      </div>
+    </div>
+    <div class="bcard w">
+      <div class="bsig"><div class="bdot w"></div><span class="blabel w">Watch — Monitor Closely</span></div>
+      <div class="btitle">Westside Occupancy Trending Toward Capacity</div>
+      <div class="bbody">Facility occupancy rising 73.8% → 74.9% over 7 days. Cardiology and Rehab are primary contributors.</div>
+      <div class="baction w">
+        <span class="action-prefix w">→ WATCH</span>
+        Flag Westside admissions to Facility Manager. No immediate action required.
+      </div>
+    </div>
+    <div class="bcard s">
+      <div class="bsig"><div class="bdot s"></div><span class="blabel s">Stable — No Action</span></div>
+      <div class="btitle">Productivity &amp; Referrals On Track</div>
+      <div class="bbody">Productivity ratio at 90.7%, within expected range. Referral volume 79,227 YTD. No anomalies detected.</div>
+      <div class="baction s">
+        <span class="action-prefix s">→ STATUS</span>
+        No action needed. Continue standard monitoring cycle.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-hdr"><span class="sh-title">Current Values</span><span class="sh-count">6 KPIs</span></div>
+  <div class="kpi-grid">
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Avg Occupancy Rate</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">74.4%</div><div class="kpi-trend">→ +1.2% stable</div></div>
+    <div class="kpi c"><div class="kpi-hdr"><div class="kpi-dot c"></div><span class="kpi-name">Current Staffing Gap</span><span class="kpi-badge">L1</span></div><div class="kpi-val c">-14.5%</div><div class="kpi-trend">▼ -42.9%</div><div class="kpi-hint">Worst: ICU -0.84 · Emergency -0.76</div></div>
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Productivity Ratio</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">90.7%</div><div class="kpi-trend">→ +0.1% stable</div></div>
+    <div class="kpi w"><div class="kpi-hdr"><div class="kpi-dot w"></div><span class="kpi-name">Predicted Shortage</span><span class="kpi-badge">L1</span></div><div class="kpi-val w">-0.70</div><div class="kpi-trend">→ flat · CI: -1.70 to +0.30</div></div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- OPTION B: Bell icon in nav → slide-in panel                        -->
+<!-- Summary cards unchanged. Actions in a side panel.                  -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+
+<div class="page-label">OPTION B — "5 Actions" button in nav bar → slide-in panel (summary cards unchanged)</div>
+
+<div class="nav">
+  <div class="logo">NAVIGATOR</div><div class="sep"></div>
+  <div class="wb">Navigator_Predictive_Analytics_v2_Extract</div>
+  <div class="personas">
+    <button class="pb active">Chief Operating Officer</button>
+    <button class="pb">Capacity Manager</button>
+    <button class="pb">Staffing Coordinator</button>
+    <button class="action-bell" onclick="document.getElementById('panel').classList.toggle('open');document.getElementById('overlay').classList.toggle('open')">
+      <div class="action-bell-dot"></div> 3 Actions
+    </button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="brief-row opt-b">
+    <div class="bcard c">
+      <div class="bsig"><div class="bdot c"></div><span class="blabel c">Critical</span></div>
+      <div class="btitle">ICU &amp; Emergency Staffing at Breaking Point</div>
+      <div class="bbody">Predicted shortage reaches -0.84 FTE in ICU and -0.76 FTE in Emergency. Gap worsened 42.9%.</div>
+    </div>
+    <div class="bcard w">
+      <div class="bsig"><div class="bdot w"></div><span class="blabel w">Watch</span></div>
+      <div class="btitle">Westside Occupancy Trending Toward Capacity</div>
+      <div class="bbody">Occupancy rising 73.8% → 74.9% over 7 days. Cardiology and Rehab are primary contributors.</div>
+    </div>
+    <div class="bcard s">
+      <div class="bsig"><div class="bdot s"></div><span class="blabel s">Stable</span></div>
+      <div class="btitle">Productivity &amp; Referrals On Track</div>
+      <div class="bbody">Productivity at 90.7%, within range. Referral volume 79,227 YTD. No anomalies detected.</div>
+    </div>
+  </div>
+
+  <div class="section-hdr"><span class="sh-title">Current Values</span><span class="sh-count">6 KPIs</span></div>
+  <div class="kpi-grid">
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Avg Occupancy Rate</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">74.4%</div><div class="kpi-trend">→ +1.2% stable</div></div>
+    <div class="kpi c"><div class="kpi-hdr"><div class="kpi-dot c"></div><span class="kpi-name">Current Staffing Gap</span><span class="kpi-badge">L1</span></div><div class="kpi-val c">-14.5%</div><div class="kpi-trend">▼ -42.9%</div><div class="kpi-hint">Worst: ICU -0.84 · Emergency -0.76</div></div>
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Productivity Ratio</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">90.7%</div><div class="kpi-trend">→ +0.1% stable</div></div>
+    <div class="kpi w"><div class="kpi-hdr"><div class="kpi-dot w"></div><span class="kpi-name">Predicted Shortage</span><span class="kpi-badge">L1</span></div><div class="kpi-val w">-0.70</div><div class="kpi-trend">→ flat</div></div>
+  </div>
+</div>
+
+<!-- Side panel -->
+<div class="panel-overlay" id="overlay" onclick="this.classList.remove('open');document.getElementById('panel').classList.remove('open')"></div>
+<div class="side-panel" id="panel">
+  <div class="sp-header">
+    <span class="sp-title">Today's Action Items</span>
+    <button class="sp-close" onclick="this.closest('.side-panel').classList.remove('open');document.getElementById('overlay').classList.remove('open')">×</button>
+  </div>
+  <div class="sp-item c">
+    <div class="sp-kpi">Current Staffing Gap</div>
+    <div class="sp-text">Contact on-call pool for ICU and Emergency — Thursday and Friday shifts are highest risk.</div>
+    <div class="sp-link">→ Open KPI</div>
+  </div>
+  <div class="sp-item c">
+    <div class="sp-kpi">Predicted Staffing Shortage</div>
+    <div class="sp-text">Escalate to Nursing Director: request agency staff authorization if gap exceeds -1.0 FTE.</div>
+    <div class="sp-link">→ Open KPI</div>
+  </div>
+  <div class="sp-item w">
+    <div class="sp-kpi">Occupancy Trend — Westside</div>
+    <div class="sp-text">Flag Westside Hospital admissions to Facility Manager. Prepare contingency if occupancy exceeds 76%.</div>
+    <div class="sp-link">→ Open KPI</div>
+  </div>
+  <div class="sp-item s">
+    <div class="sp-kpi">Productivity Ratio</div>
+    <div class="sp-text">No action required. All facilities within normal range.</div>
+    <div class="sp-link">→ Open KPI</div>
+  </div>
+  <div class="sp-item s">
+    <div class="sp-kpi">Referral Volume</div>
+    <div class="sp-text">No action required. Pipeline consistent, no anomalies detected.</div>
+    <div class="sp-link">→ Open KPI</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- OPTION C: 2 brief cards + 1 action panel (same row, same height)  -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+
+<div class="page-label">OPTION C — 2 brief cards + action list as 3rd column (same row, no extra height)</div>
+
+<div class="nav">
+  <div class="logo">NAVIGATOR</div><div class="sep"></div>
+  <div class="wb">Navigator_Predictive_Analytics_v2_Extract</div>
+  <div class="personas">
+    <button class="pb active">Chief Operating Officer</button>
+    <button class="pb">Capacity Manager</button>
+    <button class="pb">Staffing Coordinator</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="brief-row opt-c">
+    <!-- Card 1 -->
+    <div class="bcard c">
+      <div class="bsig"><div class="bdot c"></div><span class="blabel c">Critical — Action Required</span></div>
+      <div class="btitle">ICU &amp; Emergency Staffing at Breaking Point</div>
+      <div class="bbody">Predicted shortage reaches -0.84 FTE in ICU and -0.76 FTE in Emergency. Both flagged AMBER across all facilities. Gap worsened 42.9%.</div>
+    </div>
+    <!-- Card 2 -->
+    <div class="bcard w">
+      <div class="bsig"><div class="bdot w"></div><span class="blabel w">Watch — Monitor Closely</span></div>
+      <div class="btitle">Westside Occupancy Trending Toward Capacity</div>
+      <div class="bbody">Occupancy rising 73.8% → 74.9% over 7 days. At current trajectory, Westside exceeds 76% threshold next week.</div>
+    </div>
+    <!-- Action panel as 3rd column -->
+    <div class="action-panel-card">
+      <div class="ap-header">
+        Action Items
+        <span class="ap-count">3 required</span>
+      </div>
+      <div class="ap-item">
+        <div class="ap-dot c"></div>
+        Contact on-call pool for ICU — Thursday at risk
+      </div>
+      <div class="ap-item">
+        <div class="ap-dot c"></div>
+        Escalate Nursing Director if gap &gt; -1.0 FTE
+      </div>
+      <div class="ap-item">
+        <div class="ap-dot w"></div>
+        Flag Westside admissions to Facility Mgr
+      </div>
+      <div class="ap-item">
+        <div class="ap-dot s"></div>
+        No action: Productivity &amp; referrals stable
+      </div>
+    </div>
+  </div>
+
+  <div class="section-hdr"><span class="sh-title">Current Values</span><span class="sh-count">6 KPIs</span></div>
+  <div class="kpi-grid">
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Avg Occupancy Rate</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">74.4%</div><div class="kpi-trend">→ +1.2% stable</div></div>
+    <div class="kpi c"><div class="kpi-hdr"><div class="kpi-dot c"></div><span class="kpi-name">Current Staffing Gap</span><span class="kpi-badge">L1</span></div><div class="kpi-val c">-14.5%</div><div class="kpi-trend">▼ -42.9%</div><div class="kpi-hint">Worst: ICU -0.84 · Emergency -0.76</div></div>
+    <div class="kpi s"><div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Productivity Ratio</span><span class="kpi-badge">L1</span></div><div class="kpi-val n">90.7%</div><div class="kpi-trend">→ +0.1% stable</div></div>
+    <div class="kpi w"><div class="kpi-hdr"><div class="kpi-dot w"></div><span class="kpi-name">Predicted Shortage</span><span class="kpi-badge">L1</span></div><div class="kpi-val w">-0.70</div><div class="kpi-trend">→ flat</div></div>
+  </div>
+</div>
+
+</body>
+</html>

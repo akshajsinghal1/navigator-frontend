@@ -97,6 +97,19 @@ class SummaryCard(BaseModel):
     signal: Literal["positive", "warning", "neutral"]      # drives accent colour in UI
 
 
+# ── AI-generated action item (per persona, shown beside daily briefing) ──────
+class ActionItem(BaseModel):
+    kpi_name: str                                           # which KPI this action relates to
+    action: str                                             # concrete 1-sentence action step
+    signal: Literal["critical", "watch", "stable"]         # drives priority colouring in UI
+
+
+# ── AI-generated KPI drivers (per persona, shown in KPI modal) ───────────────
+class KpiDrivers(BaseModel):
+    kpi_name: str                                           # exact KPI name
+    drivers: List[str]                                      # 2-4 short data-grounded driver phrases
+
+
 # ── KPI explanation (agent-generated) ───────────────────────────────────────
 class Explanation(BaseModel):
     what: str                          # what this KPI measures, in plain language
@@ -150,6 +163,14 @@ class PersonaView(BaseModel):
     summary_cards: List[SummaryCard] = Field(   # exactly 3 AI-written summary cards
         default_factory=list,
         description="3 AI-written summary cards shown at the top of this persona's dashboard",
+    )
+    action_items: List[ActionItem] = Field(
+        default_factory=list,
+        description="Action items derived from KPI signals, shown beside the daily briefing",
+    )
+    kpi_drivers: List[KpiDrivers] = Field(
+        default_factory=list,
+        description="Per-KPI driver bullets shown in the KPI modal — refreshes with data",
     )
     dashboard_sections: List[DashboardSection]  # sections curated for this persona
 

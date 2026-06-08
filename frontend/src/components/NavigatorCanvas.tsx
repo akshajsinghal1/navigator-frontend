@@ -18,7 +18,7 @@ import { useChartTheme } from "../context/ChartThemeContext";
 import { NavigatorKpiChart } from "./NavigatorKpiChart";
 import { CHART_FONT, CHART_NUM_FONT, translucent } from "./charts/chartTheme";
 import { api } from "../api/client";
-import type { NavigatorPersona, NavigatorSummaryCard, NavigatorKPI, L2Projection } from "../types/navigator";
+import type { NavigatorPersona, NavigatorSummaryCard, NavigatorActionItem, NavigatorKpiDrivers, NavigatorKPI, L2Projection } from "../types/navigator";
 
 // ── Period type ───────────────────────────────────────────────────────────────
 
@@ -291,18 +291,7 @@ function PeriodBar({
   );
 }
 
-// ── Summary card ──────────────────────────────────────────────────────────────
-
-const summaryCardBase = {
-  flex: 1,
-  minWidth: 0,
-  borderRadius: 6,
-  padding: "10px 14px",
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: 4,
-  animation: "summaryIn 0.32s ease both",
-} as const;
+// ── Summary card (horizontal-scroll briefing strip) ───────────────────────────
 
 function SummaryCardItem({ card }: { card: NavigatorSummaryCard }) {
   const { palette } = useChartTheme();
@@ -313,41 +302,256 @@ function SummaryCardItem({ card }: { card: NavigatorSummaryCard }) {
     palette.accent;
 
   const signalLabel =
-    card.signal === "positive" ? "● Positive" :
-    card.signal === "warning"  ? "▲ Watch"    :
-    "◆ Insight";
+    card.signal === "positive" ? "Positive" :
+    card.signal === "warning"  ? "Watch"    :
+    "Insight";
 
   return (
     <div style={{
-      ...summaryCardBase,
-      background: `${accentColor}12`,
-      border: `1px solid ${accentColor}33`,
+      flexShrink: 0,
+      width: 230,
+      borderRadius: 6,
+      padding: "10px 12px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      background: `${accentColor}10`,
+      border: `1px solid ${accentColor}2A`,
       borderLeft: `3px solid ${accentColor}`,
+      animation: "summaryIn 0.32s ease both",
     }}>
-      {/* Signal + title on one row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         <span style={{
-          fontFamily: CHART_NUM_FONT, fontSize: 10, fontWeight: 700,
-          color: accentColor, letterSpacing: "0.04em", textTransform: "uppercase",
-          flexShrink: 0,
+          width: 6, height: 6, borderRadius: "50%",
+          background: accentColor, flexShrink: 0,
+          display: "inline-block",
+        }} />
+        <span style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 9, fontWeight: 700,
+          color: accentColor, letterSpacing: "0.1em", textTransform: "uppercase",
         }}>
           {signalLabel}
         </span>
-        <span style={{
-          fontFamily: CHART_FONT, fontSize: 12, fontWeight: 700,
-          color: palette.ink, lineHeight: 1.2,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-          {card.title}
-        </span>
       </div>
-      {/* Body — full text */}
+      <span style={{
+        fontFamily: CHART_FONT, fontSize: 11, fontWeight: 700,
+        color: palette.ink, lineHeight: 1.3,
+      }}>
+        {card.title}
+      </span>
       <p style={{
-        fontFamily: CHART_FONT, fontSize: 11,
+        fontFamily: CHART_FONT, fontSize: 10,
         color: palette.ink3, lineHeight: 1.5, margin: 0,
+        display: "-webkit-box",
+        WebkitLineClamp: 4,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
       }}>
         {card.body}
       </p>
+    </div>
+  );
+}
+
+// ── Action item row ───────────────────────────────────────────────────────────
+
+function ActionItemRow({
+  item,
+  onClickKpi,
+}: {
+  item: NavigatorActionItem;
+  onClickKpi?: () => void;
+}) {
+  const { palette } = useChartTheme();
+  const [hovered, setHovered] = useState(false);
+
+  const dotColor =
+    item.signal === "critical" ? palette.red   :
+    item.signal === "watch"    ? palette.amber ?? "#F0C040" :
+    palette.green;
+
+  return (
+    <div
+      onClick={onClickKpi}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 8,
+        padding: "6px 0",
+        borderBottom: `1px solid ${palette.line}`,
+        cursor: onClickKpi ? "pointer" : "default",
+        opacity: hovered ? 0.8 : 1,
+        transition: "opacity 0.12s",
+      }}
+    >
+      <span style={{
+        width: 6, height: 6, borderRadius: "50%",
+        background: dotColor, flexShrink: 0, marginTop: 4,
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 8, color: palette.ink4,
+          textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1,
+        }}>
+          {item.kpi_name}
+        </div>
+        <div style={{
+          fontFamily: CHART_FONT, fontSize: 10, color: palette.ink, lineHeight: 1.4,
+        }}>
+          {item.action}
+        </div>
+      </div>
+      {onClickKpi && (
+        <span style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 11,
+          color: palette.accent, flexShrink: 0, marginTop: 2, opacity: 0.7,
+        }}>›</span>
+      )}
+    </div>
+  );
+}
+
+// ── Two-column briefing + action items header ─────────────────────────────────
+
+function BriefingHeader({
+  summaryCards,
+  actionItems,
+  onActionClick,
+  palette,
+}: {
+  summaryCards: NavigatorSummaryCard[];
+  actionItems:  NavigatorActionItem[];
+  onActionClick?: (kpiName: string) => void;
+  palette: Palette;
+}) {
+  const SIGNAL_ORDER: Record<NavigatorActionItem["signal"], number> = {
+    critical: 0,
+    watch:    1,
+    stable:   2,
+  };
+  const CARD_ORDER: Record<NavigatorSummaryCard["signal"], number> = {
+    warning:  0,
+    neutral:  1,
+    positive: 2,
+  };
+
+  const sortedCards   = [...summaryCards].sort((a, b) => CARD_ORDER[a.signal]  - CARD_ORDER[b.signal]);
+  const sortedActions = [...actionItems].sort((a, b) => SIGNAL_ORDER[a.signal] - SIGNAL_ORDER[b.signal]);
+
+  const requiredCount = sortedActions.filter(
+    (a) => a.signal === "critical" || a.signal === "watch"
+  ).length;
+
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "60% 40%",
+      gap: 10,
+      height: 190,
+      alignItems: "stretch",
+    }}>
+
+      {/* Left: Daily Briefing */}
+      <div style={{
+        background: palette.bg1,
+        border: `1px solid ${palette.line}`,
+        borderRadius: 8,
+        padding: "10px 12px",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 9, fontWeight: 700,
+          letterSpacing: "0.1em", textTransform: "uppercase",
+          color: palette.ink4, marginBottom: 8, flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          Daily Briefing
+          <span style={{
+            fontWeight: 400, letterSpacing: 0, textTransform: "none",
+            fontSize: 9, color: palette.ink4,
+          }}>
+            — refreshed with data
+          </span>
+        </div>
+
+        {/* Horizontally scrollable cards */}
+        <div style={{
+          display: "flex", flexDirection: "row", gap: 8,
+          overflowX: "auto",
+          paddingBottom: 4,
+          scrollbarWidth: "thin",
+          scrollbarColor: `${palette.line2} transparent`,
+        }}>
+          {sortedCards.map((card, i) => (
+            <SummaryCardItem key={i + card.title} card={card} />
+          ))}
+        </div>
+      </div>
+
+      {/* Right: Action Items — stretches to match briefing height; list scrolls inside */}
+      <div style={{
+        background: palette.bg1,
+        border: `1px solid ${palette.line}`,
+        borderRadius: 8,
+        padding: "10px 12px",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        overflow: "hidden",
+      }}>
+        <div style={{
+          fontFamily: CHART_NUM_FONT, fontSize: 9, fontWeight: 700,
+          letterSpacing: "0.1em", textTransform: "uppercase",
+          color: palette.ink4, marginBottom: 8, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          Action Items
+          {requiredCount > 0 && (
+            <span style={{
+              background: `${palette.red}18`,
+              color: palette.red,
+              border: `1px solid ${palette.red}35`,
+              borderRadius: 3, padding: "1px 6px",
+              fontSize: 9, fontWeight: 700,
+            }}>
+              {requiredCount} required
+            </span>
+          )}
+        </div>
+
+        {/* Vertically scrollable action list — fills remaining height */}
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: "auto",
+          scrollbarWidth: "thin",
+          scrollbarColor: `${palette.line2} transparent`,
+        }}>
+          {actionItems.length === 0 ? (
+            <div style={{
+              fontFamily: CHART_FONT, fontSize: 10, color: palette.ink4,
+              fontStyle: "italic", padding: "4px 0",
+            }}>
+              No actions — all KPIs stable
+            </div>
+          ) : (
+            sortedActions.map((item, i) => {
+              const isLast = i === sortedActions.length - 1;
+              return (
+                <div key={i} style={{ borderBottom: isLast ? "none" : undefined }}>
+                  <ActionItemRow
+                    item={item}
+                    onClickKpi={
+                      onActionClick ? () => onActionClick(item.kpi_name) : undefined
+                    }
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -609,13 +813,15 @@ function KpiTile({ kpi, workbookId, period, onExpand, colSpan = 1 }: KpiTileProp
 // ── KpiModal ──────────────────────────────────────────────────────────────────
 
 interface KpiModalProps {
-  kpi:        NavigatorKPI;
-  workbookId: string;
-  period:     Period;
-  onClose:    () => void;
+  kpi:         NavigatorKPI;
+  workbookId:  string;
+  period:      Period;
+  onClose:     () => void;
+  actionItem?: NavigatorActionItem;   // matched from persona.action_items
+  drivers?:    string[];              // matched from persona.kpi_drivers
 }
 
-function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
+function KpiModal({ kpi, workbookId, period, onClose, actionItem, drivers }: KpiModalProps) {
   const { palette } = useChartTheme();
 
   // Live data for modal headline
@@ -687,7 +893,8 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
     kpi.trend_direction === "flat" ? "→" : null;
 
   const ctype = (kpi.chart?.type ?? "kpi_card").toLowerCase();
-  const isCardOnly = ctype === "kpi_card" || ctype === "scorecard";
+  // isCardOnly = false when the chart component can auto-upgrade kpi_card using multi-row data
+  const isCardOnly = (ctype === "kpi_card" || ctype === "scorecard") && allRows.length <= 1;
 
   // Close on Escape
   useEffect(() => {
@@ -944,6 +1151,100 @@ function KpiModal({ kpi, workbookId, period, onClose }: KpiModalProps) {
             )}
           </div>
         )}
+
+        {/* What's Driving This */}
+        {drivers && drivers.length > 0 && (
+          <div style={{
+            borderTop:    `1px solid ${palette.line}`,
+            paddingTop:   16,
+            display:      "flex",
+            flexDirection: "column",
+            gap:          10,
+          }}>
+            <span style={{
+              fontFamily:    CHART_NUM_FONT,
+              fontSize:      11,
+              fontWeight:    700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color:         palette.ink3,
+            }}>
+              What's Driving This
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {drivers.map((d, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{
+                    width: 5, height: 5, borderRadius: "50%",
+                    background: palette.ink3, flexShrink: 0, marginTop: 6,
+                  }} />
+                  <span style={{
+                    fontFamily: CHART_FONT,
+                    fontSize:   12,
+                    color:      palette.ink2,
+                    lineHeight: 1.5,
+                  }}>
+                    {d}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recommended Action */}
+        {actionItem && (
+          <div style={{
+            borderTop:    `1px solid ${palette.line}`,
+            paddingTop:   16,
+            display:      "flex",
+            flexDirection: "column",
+            gap:          8,
+          }}>
+            <span style={{
+              fontFamily:    CHART_NUM_FONT,
+              fontSize:      11,
+              fontWeight:    700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color:         actionItem.signal === "critical" ? palette.red :
+                             actionItem.signal === "watch"    ? (palette.amber ?? "#F0C040") :
+                             palette.green,
+            }}>
+              Recommended Action
+            </span>
+            <div style={{
+              display:      "flex",
+              alignItems:   "flex-start",
+              gap:          10,
+              background:   actionItem.signal === "critical" ? `${palette.red}0E` :
+                            actionItem.signal === "watch"    ? `${palette.amber ?? "#F0C040"}0E` :
+                            `${palette.green}0E`,
+              border: `1px solid ${
+                actionItem.signal === "critical" ? `${palette.red}30` :
+                actionItem.signal === "watch"    ? `${palette.amber ?? "#F0C040"}30` :
+                `${palette.green}30`
+              }`,
+              borderRadius: 6,
+              padding:      "10px 12px",
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginTop: 5,
+                background: actionItem.signal === "critical" ? palette.red :
+                            actionItem.signal === "watch"    ? (palette.amber ?? "#F0C040") :
+                            palette.green,
+              }} />
+              <span style={{
+                fontFamily: CHART_FONT,
+                fontSize:   13,
+                color:      palette.ink,
+                lineHeight: 1.6,
+              }}>
+                {actionItem.action}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -991,23 +1292,60 @@ interface Props {
 
 export function NavigatorCanvas({ persona, workbookId }: Props) {
   const { palette }  = useChartTheme();
-  const [period, setPeriod]         = useState<Period>("now");
+  const [period, setPeriod] = useState<Period>("now");
   const [expandedKpi, setExpandedKpi] = useState<NavigatorKPI | null>(null);
   const hasSummary = (persona.summary_cards?.length ?? 0) > 0;
 
-  const handleExpand   = useCallback((kpi: NavigatorKPI) => setExpandedKpi(kpi), []);
-  const handleClose    = useCallback(() => setExpandedKpi(null), []);
+  // Helper: normalise KPI name for fuzzy matching
+  const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  // Find matching action item + drivers for a KPI
+  const getModalExtras = useCallback((kpi: NavigatorKPI) => {
+    const target = normName(kpi.name);
+    const actionItem = (persona.action_items ?? []).find(
+      (a) => normName(a.kpi_name) === target
+    );
+    const driversEntry = (persona.kpi_drivers ?? []).find(
+      (d) => normName(d.kpi_name) === target
+    );
+    return { actionItem, drivers: driversEntry?.drivers };
+  }, [persona.action_items, persona.kpi_drivers]);
+
+  const handleExpand = useCallback((kpi: NavigatorKPI) => setExpandedKpi(kpi), []);
+  const handleClose  = useCallback(() => setExpandedKpi(null), []);
+
+  // Action item click — find the matching KPI and open its modal
+  const handleActionClick = useCallback((kpiName: string) => {
+    const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const target = normalise(kpiName);
+    for (const section of persona.dashboard_sections) {
+      const match = section.kpis.find((k) => normalise(k.name) === target);
+      if (match) { setExpandedKpi(match); return; }
+    }
+    // Fuzzy fallback — find best partial match
+    let best: NavigatorKPI | null = null;
+    let bestScore = 0;
+    for (const section of persona.dashboard_sections) {
+      for (const k of section.kpis) {
+        const kn = normalise(k.name);
+        const score = [...target].filter((c) => kn.includes(c)).length;
+        if (score > bestScore) { best = k; bestScore = score; }
+      }
+    }
+    if (best) setExpandedKpi(best);
+  }, [persona.dashboard_sections]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "4px 0" }}>
 
-      {/* ── AI Summary strip ── */}
+      {/* ── Two-column: Daily Briefing + Action Items ── */}
       {hasSummary && (
-        <div style={{ display: "flex", gap: 10 }}>
-          {persona.summary_cards!.map((card, i) => (
-            <SummaryCardItem key={i + card.title} card={card} />
-          ))}
-        </div>
+        <BriefingHeader
+          summaryCards={persona.summary_cards!}
+          actionItems={persona.action_items ?? []}
+          onActionClick={handleActionClick}
+          palette={palette}
+        />
       )}
 
       {/* ── Period bar ── */}
@@ -1089,14 +1427,19 @@ export function NavigatorCanvas({ persona, workbookId }: Props) {
       ))}
 
       {/* ── KPI detail modal ── */}
-      {expandedKpi && (
-        <KpiModal
-          kpi={expandedKpi}
-          workbookId={workbookId}
-          period={period}
-          onClose={handleClose}
-        />
-      )}
+      {expandedKpi && (() => {
+        const { actionItem, drivers } = getModalExtras(expandedKpi);
+        return (
+          <KpiModal
+            kpi={expandedKpi}
+            workbookId={workbookId}
+            period={period}
+            onClose={handleClose}
+            actionItem={actionItem}
+            drivers={drivers}
+          />
+        );
+      })()}
 
       <style>{`
         @keyframes kpiEnter {

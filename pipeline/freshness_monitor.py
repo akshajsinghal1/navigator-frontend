@@ -260,7 +260,7 @@ def _refresh_summaries(company_id: str, workbook_content_url: str) -> None:
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from api.routes.viewdata import _get_conn
     from agents.summary_agent import SummaryAgent
-    from schemas.config import IntelligenceConfig, SummaryCard
+    from schemas.config import IntelligenceConfig, SummaryCard, ActionItem, KpiDrivers
     from storage.db import get_session, ConfigRepo
 
     # Load the existing config
@@ -332,10 +332,10 @@ def _refresh_summaries(company_id: str, workbook_content_url: str) -> None:
         return items
 
     # Run all summary agents in parallel
-    def _run_one(idx: int, pv) -> tuple[int, list]:
+    def _run_one(idx: int, pv) -> tuple[int, dict]:
         kpi_data = _build_summary_input(pv)
         try:
-            cards = SummaryAgent().generate(
+            result = SummaryAgent().generate(
                 persona_role       = pv.persona.role,
                 focus_areas        = pv.persona.focus_areas,
                 business_objective = config.objective,
@@ -343,17 +343,32 @@ def _refresh_summaries(company_id: str, workbook_content_url: str) -> None:
             )
         except Exception as exc:
             log.warning("Freshness: SummaryAgent failed for '%s': %s", pv.persona.role, exc)
-            cards = []
-        return idx, cards
+            result = {"cards": [], "action_items": []}
+        return idx, result
 
     log.info("Freshness: re-running %d summary agents in parallel for '%s'", len(config.personas), company_id)
     with ThreadPoolExecutor(max_workers=len(config.personas) or 1) as pool:
         futures = {pool.submit(_run_one, i, pv): i for i, pv in enumerate(config.personas)}
         for fut in as_completed(futures):
-            idx, raw_cards = fut.result()
+            idx, summary_result = fut.result()
             config.personas[idx].summary_cards = [
                 SummaryCard(title=c.get("title", ""), body=c.get("body", ""), signal=c.get("signal", "neutral"))
-                for c in raw_cards
+                for c in summary_result.get("cards", [])
+            ]
+            config.personas[idx].action_items = [
+                ActionItem(
+                    kpi_name = a.get("kpi_name", ""),
+                    action   = a.get("action", ""),
+                    signal   = a.get("signal", "stable"),
+                )
+                for a in summary_result.get("action_items", [])
+            ]
+            config.personas[idx].kpi_drivers = [
+                KpiDrivers(
+                    kpi_name = d.get("kpi_name", ""),
+                    drivers  = d.get("drivers", []),
+                )
+                for d in summary_result.get("kpi_drivers", [])
             ]
 
     # Persist updated config

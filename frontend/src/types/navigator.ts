@@ -85,6 +85,17 @@ export interface NavigatorSummaryCard {
   signal: "positive" | "warning" | "neutral";
 }
 
+export interface NavigatorActionItem {
+  kpi_name: string;
+  action:   string;
+  signal:   "critical" | "watch" | "stable";
+}
+
+export interface NavigatorKpiDrivers {
+  kpi_name: string;
+  drivers:  string[];
+}
+
 export type PersonaLevel = "executive" | "manager" | "analyst";
 
 export interface NavigatorPersonaInfo {
@@ -108,6 +119,8 @@ export interface NavigatorSection {
 export interface NavigatorPersona {
   persona:            NavigatorPersonaInfo;
   summary_cards?:     NavigatorSummaryCard[];
+  action_items?:      NavigatorActionItem[];
+  kpi_drivers?:       NavigatorKpiDrivers[];
   dashboard_sections: NavigatorSection[];
 }
 

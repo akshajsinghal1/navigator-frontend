@@ -1323,10 +1323,10 @@ class OrchestratorAgent(BaseAgent):
         # Previously sequential (one per persona). Now all fire at once.
         from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 
-        def _run_summary(idx: int, role: str, focus_areas: list, objective: str, kpis: list) -> tuple[int, list]:
+        def _run_summary(idx: int, role: str, focus_areas: list, objective: str, kpis: list) -> tuple[int, dict]:
             log.info("Running SummaryAgent for persona '%s' with %d KPIs", role, len(kpis))
             try:
-                cards = SummaryAgent().generate(
+                result = SummaryAgent().generate(
                     persona_role       = role,
                     focus_areas        = focus_areas,
                     business_objective = objective,
@@ -1334,8 +1334,8 @@ class OrchestratorAgent(BaseAgent):
                 )
             except Exception as exc:
                 log.warning("SummaryAgent failed for '%s': %s — using empty cards", role, exc)
-                cards = []
-            return idx, cards
+                result = {"cards": [], "action_items": []}
+            return idx, result
 
         with ThreadPoolExecutor(max_workers=len(_pending_summaries) or 1) as _pool:
             _futures = {
@@ -1343,14 +1343,30 @@ class OrchestratorAgent(BaseAgent):
                 for i, (role, fa, obj, kd) in enumerate(_pending_summaries)
             }
             for _fut in _as_completed(_futures):
-                idx, raw_cards = _fut.result()
+                idx, summary_result = _fut.result()
+                from schemas.config import ActionItem, KpiDrivers
                 persona_views[idx].summary_cards = [
                     SummaryCard(
                         title  = c.get("title", "Summary"),
                         body   = c.get("body", ""),
                         signal = c.get("signal", "neutral"),
                     )
-                    for c in raw_cards
+                    for c in summary_result.get("cards", [])
+                ]
+                persona_views[idx].action_items = [
+                    ActionItem(
+                        kpi_name = a.get("kpi_name", ""),
+                        action   = a.get("action", ""),
+                        signal   = a.get("signal", "stable"),
+                    )
+                    for a in summary_result.get("action_items", [])
+                ]
+                persona_views[idx].kpi_drivers = [
+                    KpiDrivers(
+                        kpi_name = d.get("kpi_name", ""),
+                        drivers  = d.get("drivers", []),
+                    )
+                    for d in summary_result.get("kpi_drivers", [])
                 ]
 
         return IntelligenceConfig(

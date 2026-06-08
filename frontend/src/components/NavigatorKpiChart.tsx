@@ -416,9 +416,23 @@ function buildOption(
   //   2D categorical (x + breakdown) → heatmap_chart (with severity coloring)
   //   1D categorical                 → horizontal_bar_chart
   const rawType = (kpi.chart?.type ?? "kpi_card").toLowerCase();
-  const ctype   = rawType === "table"
+  let ctype = rawType === "table"
     ? (kpi.chart?.breakdown_by ? "heatmap_chart" : "horizontal_bar_chart")
     : rawType;
+
+  // Auto-upgrade kpi_card → renderable chart in modal (non-compact) when
+  // the view has actual multi-row data (e.g. Risk Matrix with per-facility rows)
+  if ((ctype === "kpi_card" || ctype === "scorecard") && !compact && rows.length > 1) {
+    const cols     = Object.keys(rows[0]);
+    const numCols  = cols.filter((c) => parseNum(rows[0][c]) !== null);
+    const catCols  = cols.filter((c) => parseNum(rows[0][c]) === null);
+    if (catCols.length >= 2 && numCols.length >= 1) {
+      ctype = "heatmap_chart";       // 2D categorical → heatmap
+    } else if (catCols.length >= 1 && numCols.length >= 1) {
+      ctype = "horizontal_bar_chart"; // 1D categorical → ranked bars
+    }
+    // still kpi_card if data has no usable structure → fall through to null below
+  }
   if (ctype === "kpi_card" || ctype === "scorecard") return null;
   if (!rows.length) return null;
 
@@ -489,7 +503,10 @@ function buildOption(
   }
 
   let pairs = yCol ? groupBy(rows, xCol!, yCol, agg, xAxisType, sortOrder) : [];
-  if (!pairs.length) return null;
+  // Heatmaps build their own data grid directly from rows (including all-categorical views
+  // like Risk Matrix where yCol is "Risk Category" — groupBy returns no numeric pairs).
+  // Skip the pairs null-guard so the heatmap block is always reached.
+  if (!pairs.length && ctype !== "heatmap_chart") return null;
 
   // Guard against degenerate "time series" — a sequential chart with a single
   // data point is meaningless (e.g. a single-value KPI view where the agent
@@ -619,11 +636,30 @@ function buildOption(
   // ── Multi-series charts (split by a breakdown dimension) ─────────────────
   // MUST come before the single-series line/area block — otherwise line_chart
   // with breakdown_by hits the single-series block first and returns early.
+
+  // Smart breakdown_by fallback: if the agent left breakdown_by null but the KPI
+  // name says "by [dimension]" (e.g. "Staffing Gap Trend by Facility"), auto-detect
+  // the dimension column from the actual data rows.
+  const effectiveBreakdownBy: string | null = (() => {
+    if (kpi.chart?.breakdown_by) return kpi.chart.breakdown_by;
+    const byMatch = kpi.name.match(/\bby\s+([a-z][a-z\s]{1,20}?)(?:\s*$)/i);
+    if (!byMatch) return null;
+    const dimHint = byMatch[1].trim();
+    const col = findColumn(rows, dimHint);
+    if (!col || col === xCol || col === yCol) return null;
+    // Must be categorical (not numeric) and have 2-20 distinct values
+    const isNumeric = rows.slice(0, 3).every((r) => parseNum(r[col]) !== null);
+    if (isNumeric) return null;
+    const distinct = new Set(rows.map((r) => String(r[col] ?? "")).filter(Boolean));
+    if (distinct.size < 2 || distinct.size > 20) return null;
+    return col;
+  })();
+
   const MULTI_SERIES_TYPES = new Set([
     "stacked_bar_chart", "stacked_area_chart", "line_chart", "area_chart",
   ]);
-  if (MULTI_SERIES_TYPES.has(ctype) && kpi.chart?.breakdown_by) {
-    const byCol = findColumn(rows, kpi.chart.breakdown_by);
+  if (MULTI_SERIES_TYPES.has(ctype) && effectiveBreakdownBy) {
+    const byCol = findColumn(rows, effectiveBreakdownBy);
     if (byCol && byCol !== xCol && byCol !== yCol) {
       const { categories, series } = groupByStacked(rows, xCol!, byCol, yCol ?? byCol, agg, xAxisType);
       if (series.length >= 1) {
@@ -1079,10 +1115,85 @@ function buildOption(
       return 1; // count-per-cell fallback
     };
 
-    // ── Fallback: when a valid 2-D grid can't form (no 2nd dimension, or no
-    // data cells), render a horizontal bar of xCol vs mean intensity/severity/
-    // count — so the tile ALWAYS shows something instead of "No chart".
+    // Severity → RAG color for per-bar coloring
+    const severityToColor = (score: number): string => {
+      if (score >= 3) return palette.red;
+      if (score >= 2) return palette.amber;
+      return palette.green;
+    };
+
+    // Detect if an array of values is a pure RAG column (GREEN/AMBER/RED etc.)
+    const isRagColumn = (vals: string[]) =>
+      vals.length >= 1 && vals.length <= 4 &&
+      vals.every(v => SEVERITY_MAP[v.toLowerCase().trim()] !== undefined);
+
+    // ── Colour-coded risk bar chart ───────────────────────────────────────────
+    // When the data has a categorical risk/status column (GREEN/AMBER/RED) but no
+    // numeric intensity, render a horizontal bar coloured per RAG level instead of
+    // a confusing count-heatmap.  The "worst" risk per label drives both bar length
+    // and colour so the chart reads at a glance.
+    const colorRiskBar = (overrideSevCol?: string): Record<string, unknown> | null => {
+      // Use override (e.g. byCol when it IS the RAG column) or fall back to severityCol
+      const effSevCol = overrideSevCol ?? severityCol;
+      if (!effSevCol || !xCol) return null;
+      const groups = new Map<string, { maxSev: number; label: string }>();
+      for (const r of rows) {
+        const k = String(r[xCol!] ?? "");
+        if (!k) continue;
+        const sev = severityScore(r[effSevCol]);
+        if (sev === null) continue;
+        const prev = groups.get(k);
+        if (!prev || sev > prev.maxSev) {
+          groups.set(k, { maxSev: sev, label: String(r[effSevCol] ?? "").toUpperCase() });
+        }
+      }
+      const bars = [...groups.entries()]
+        .map(([k, v]) => ({ name: k, value: v.maxSev, label: v.label }))
+        .sort((a, b) => b.value - a.value);
+      if (!bars.length) return null;
+      return {
+        backgroundColor: "transparent",
+        animationDuration: compact ? 200 : 600,
+        tooltip: compact ? { show: false } : {
+          ...tt, trigger: "axis", axisPointer: { type: "shadow" },
+          // Use actual label from data (e.g. "AMBER", "MEDIUM", "HIGH") — no hardcoded strings
+          formatter: (p: { name: string; value: number }[]) => {
+            const bar = bars.find(b => b.name === p[0].name);
+            return `${p[0].name}: <b>${bar?.label ?? ""}</b>`;
+          },
+        },
+        grid: { containLabel: true, left: "2%", right: "8%", top: 4, bottom: 4 },
+        xAxis: { ...(compact ? COMPACT_AXIS_Y : AXIS_BASE), type: "value", max: 3, show: false },
+        yAxis: {
+          ...(compact ? COMPACT_AXIS_Y : AXIS_BASE), type: "category",
+          data: bars.map(b => b.name), inverse: true,
+          axisLabel: { color: compact ? palette.ink4 : palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: compact ? 8 : 11 },
+        },
+        series: [{
+          type: "bar",
+          data: bars.map(b => ({
+            value: b.value,
+            itemStyle: { color: severityToColor(b.value), borderRadius: [0, 3, 3, 0] },
+            label: compact ? undefined : {
+              show: true, position: "right",
+              color: palette.ink3, fontFamily: CHART_NUM_FONT, fontSize: 10,
+              formatter: () => bars.find(x => x.value === b.value)?.label ?? "",
+            },
+          })),
+          barMaxWidth: 24,
+        }],
+      };
+    };
+
+    // ── Fallback: when a valid 2-D grid can't form, render a horizontal bar
+    // of xCol vs mean intensity — so the tile ALWAYS shows something.
     const barFallback = () => {
+      // If byCol is a RAG column, use colour-coded risk bar with it as severity source
+      const ragOverride = byCol && isRagColumn([...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean))
+        ? byCol : undefined;
+      const rcb = colorRiskBar(ragOverride);
+      if (rcb) return rcb;
+
       if (!xCol) return null;
       const groups = new Map<string, number[]>();
       for (const r of rows) {
@@ -1116,12 +1227,37 @@ function buildOption(
     };
 
     if (!byCol || !xCol) return barFallback();
-    const xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
-    const yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
+    let xVals  = [...new Set(rows.map(r => String(r[xCol!] ?? "")))].filter(Boolean);
+    let yVals  = [...new Set(rows.map(r => String(r[byCol!] ?? "")))].filter(Boolean);
 
-    // If the 2nd dimension is degenerate (only 1 distinct value), a heatmap row
-    // is pointless → fall back to a bar of the primary dimension.
+    // If x has only 1 distinct value but y has multiple, swap them so we get
+    // a real bar/heatmap (e.g. Risk Matrix with 1 dept but 5 facilities → use facilities on x)
+    if (xVals.length < 2 && yVals.length >= 2) {
+      [xCol, yCol] = [byCol, xCol!];
+      xVals = yVals;
+      yVals = [...new Set(rows.map(r => String(r[yCol!] ?? "")))].filter(Boolean);
+    }
+
+    // If the 2nd dimension is still degenerate, fall back to a bar of the primary dimension.
     if (yVals.length < 2 || xVals.length < 2) return barFallback();
+
+    // If one of the two dimensions IS the risk-color column itself (values = GREEN/AMBER/RED),
+    // don't render a confusing "color vs department" grid — use colorRiskBar with
+    // the non-color dimension as the label axis so each bar is clearly coloured.
+    if (isRagColumn(xVals) || isRagColumn(yVals)) {
+      // yVals is the RAG column (byCol) — xCol is the label dimension. Pass byCol
+      // as the explicit severity column since severityCol was calculated excluding byCol.
+      if (isRagColumn(yVals)) {
+        const rcb = colorRiskBar(byCol ?? undefined);
+        if (rcb) return rcb;
+      }
+      // xVals is the RAG column — swap so xCol becomes the label dimension
+      if (isRagColumn(xVals)) {
+        [xCol, yCol] = [byCol!, xCol!];
+        const rcb = colorRiskBar(yCol ?? undefined);
+        if (rcb) return rcb;
+      }
+    }
 
     // Build cell map
     const cellMap = new Map<string, number[]>();

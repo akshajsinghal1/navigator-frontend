@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Navigator — Daily Brief Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #F4F1EA; font-family: 'Georgia', serif; color: #2C2B26; min-height: 100vh; }
+
+  /* ── Top Nav ── */
+  .nav { background: #F9F7F2; border-bottom: 1px solid #E5E0D5; padding: 12px 32px;
+         display: flex; align-items: center; gap: 16px; }
+  .nav-logo { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; color: #2C2B26; }
+  .nav-sep { width: 1px; height: 16px; background: #D5CFC4; }
+  .nav-wb { font-size: 12px; color: #7A7468; font-family: 'Courier New', monospace; }
+  .nav-persona { margin-left: auto; display: flex; gap: 8px; }
+  .persona-btn { padding: 5px 12px; border-radius: 4px; border: 1px solid #D5CFC4;
+                 font-size: 11px; font-family: 'Courier New', monospace; cursor: pointer;
+                 background: transparent; color: #7A7468; letter-spacing: 0.04em; }
+  .persona-btn.active { background: #C8902A; color: #fff; border-color: #C8902A; }
+
+  .main { max-width: 1300px; margin: 0 auto; padding: 28px 32px; }
+
+  /* ── Daily Brief Header ── */
+  .brief-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+  .brief-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                 color: #7A7468; font-family: 'Courier New', monospace; }
+  .brief-date { font-size: 11px; color: #9A9490; font-family: 'Courier New', monospace; }
+
+  /* ── Brief Cards ── */
+  .brief-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 32px; }
+  .brief-card { background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px; padding: 16px;
+                border-left: 4px solid transparent; position: relative; }
+  .brief-card.critical { border-left-color: #E5484D; }
+  .brief-card.warning  { border-left-color: #F0C040; }
+  .brief-card.stable   { border-left-color: #5BAD7A; }
+
+  .brief-signal { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .signal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .signal-dot.critical { background: #E5484D; box-shadow: 0 0 6px #E5484D80; }
+  .signal-dot.warning  { background: #F0C040; box-shadow: 0 0 6px #F0C04080; }
+  .signal-dot.stable   { background: #5BAD7A; box-shadow: 0 0 6px #5BAD7A80; }
+  .signal-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                  font-family: 'Courier New', monospace; }
+  .signal-label.critical { color: #E5484D; }
+  .signal-label.warning  { color: #B8900A; }
+  .signal-label.stable   { color: #3A8A5A; }
+
+  .brief-card-title { font-size: 13px; font-weight: 700; color: #2C2B26; margin-bottom: 6px; line-height: 1.3; }
+  .brief-card-body { font-size: 12px; color: #5A5650; line-height: 1.6; margin-bottom: 12px; }
+  .brief-action { background: #F4F1EA; border: 1px solid #E5E0D5; border-radius: 4px;
+                  padding: 8px 10px; font-size: 11px; color: #3A3730; line-height: 1.4; }
+  .brief-action-label { font-family: 'Courier New', monospace; font-size: 10px; font-weight: 700;
+                        letter-spacing: 0.06em; color: #7A7468; display: block; margin-bottom: 3px; }
+  .brief-action.critical .brief-action-label { color: #C03030; }
+  .brief-action.warning  .brief-action-label { color: #8A6A00; }
+  .brief-action.stable   .brief-action-label { color: #3A8A5A; }
+
+  /* ── KPI Section ── */
+  .section-header { display: flex; align-items: center; justify-content: space-between;
+                    margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #E5E0D5; }
+  .section-title { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                   color: #7A7468; font-family: 'Courier New', monospace; }
+  .section-count { font-size: 10px; color: #9A9490; font-family: 'Courier New', monospace; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 24px; }
+  .kpi-full { grid-column: span 2; }
+
+  /* ── KPI Tile ── */
+  .kpi-tile { background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px; padding: 14px 16px;
+              cursor: pointer; transition: box-shadow 0.15s; position: relative; }
+  .kpi-tile:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .kpi-tile.has-critical { border-left: 3px solid #E5484D; }
+  .kpi-tile.has-warning  { border-left: 3px solid #F0C040; }
+  .kpi-tile.has-stable   { border-left: 3px solid #5BAD7A; }
+
+  .kpi-tile-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .kpi-rag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .kpi-rag-dot.critical { background: #E5484D; box-shadow: 0 0 4px #E5484D80; }
+  .kpi-rag-dot.warning  { background: #F0C040; box-shadow: 0 0 4px #F0C04080; }
+  .kpi-rag-dot.stable   { background: #5BAD7A; }
+  .kpi-name { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+              color: #5A5650; font-family: 'Courier New', monospace; }
+  .kpi-badge { margin-left: auto; font-size: 10px; font-weight: 700; padding: 1px 5px;
+               border-radius: 3px; font-family: 'Courier New', monospace; }
+  .kpi-badge.l1 { color: #C8902A; background: #C8902A18; border: 1px solid #C8902A40; }
+
+  .kpi-value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1;
+               margin: 4px 0 2px; font-family: 'Courier New', monospace; }
+  .kpi-value.critical { color: #E5484D; }
+  .kpi-value.warning  { color: #B8900A; }
+  .kpi-value.stable   { color: #5BAD7A; }
+  .kpi-value.neutral  { color: #2C2B26; }
+
+  .kpi-trend { font-size: 11px; color: #7A7468; display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .trend-arrow { font-size: 10px; }
+  .trend-arrow.down { color: #E5484D; }
+  .trend-arrow.up   { color: #5BAD7A; }
+  .trend-arrow.flat { color: #7A7468; }
+
+  /* worst driver hint on tile */
+  .kpi-driver-hint { background: #F0EDE5; border-radius: 4px; padding: 5px 8px;
+                     font-size: 10px; color: #5A5650; display: flex; align-items: center; gap: 5px;
+                     font-family: 'Courier New', monospace; margin-top: 2px; }
+  .driver-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* chart placeholder */
+  .kpi-chart { height: 70px; background: linear-gradient(to bottom, transparent, #F4F1EA20);
+               border-radius: 4px; position: relative; margin-top: 8px; overflow: hidden; }
+  .chart-line { position: absolute; bottom: 10px; left: 0; right: 0; height: 2px; }
+  svg.sparkline { width: 100%; height: 100%; }
+
+  /* ── EXPANDED MODAL ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(44,43,38,0.5); z-index: 100;
+                   display: flex; align-items: center; justify-content: center; padding: 32px; }
+  .modal { background: #F9F7F2; border-radius: 12px; width: 100%; max-width: 760px;
+           max-height: 85vh; overflow-y: auto; box-shadow: 0 24px 64px rgba(0,0,0,0.2); }
+  .modal-header { padding: 20px 24px 0; display: flex; align-items: flex-start; justify-content: space-between; }
+  .modal-name { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+                color: #5A5650; font-family: 'Courier New', monospace; }
+  .modal-close { background: none; border: 1px solid #D5CFC4; border-radius: 50%; width: 28px; height: 28px;
+                 cursor: pointer; font-size: 14px; color: #5A5650; display: flex; align-items: center;
+                 justify-content: center; }
+  .modal-body { padding: 12px 24px 24px; }
+  .modal-value { font-size: 42px; font-weight: 600; letter-spacing: -0.03em;
+                 font-family: 'Courier New', monospace; color: #E5484D; }
+  .modal-desc { font-size: 13px; color: #7A7468; margin: 4px 0 16px; font-style: italic; }
+
+  .modal-chart-area { height: 200px; background: #F4F1EA; border-radius: 6px; margin-bottom: 20px;
+                      display: flex; align-items: center; justify-content: center; color: #9A9490;
+                      font-size: 12px; font-family: 'Courier New', monospace; }
+
+  .modal-section { margin-bottom: 20px; }
+  .modal-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                          font-family: 'Courier New', monospace; margin-bottom: 10px; padding-bottom: 4px;
+                          border-bottom: 1px solid #E5E0D5; }
+  .modal-section-title.critical { color: #E5484D; }
+  .modal-section-title.warning  { color: #B8900A; }
+  .modal-section-title.insight  { color: #C8902A; }
+  .modal-section-title.action   { color: #3A6AA0; }
+
+  .insight-text { font-size: 13px; color: #3A3730; line-height: 1.7; }
+
+  /* Drivers list */
+  .drivers-list { display: flex; flex-direction: column; gap: 6px; }
+  .driver-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+                background: #F4F1EA; border-radius: 6px; border: 1px solid #E5E0D5; }
+  .driver-rank { font-size: 10px; font-family: 'Courier New', monospace; color: #9A9490; width: 16px; }
+  .driver-dot-lg { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .driver-dot-lg.critical { background: #E5484D; }
+  .driver-dot-lg.warning  { background: #F0C040; }
+  .driver-dot-lg.stable   { background: #5BAD7A; }
+  .driver-name { font-size: 12px; font-weight: 600; color: #2C2B26; flex: 1; }
+  .driver-value { font-size: 13px; font-weight: 700; font-family: 'Courier New', monospace; }
+  .driver-value.critical { color: #E5484D; }
+  .driver-value.warning  { color: #B8900A; }
+  .driver-value.stable   { color: #5BAD7A; }
+  .driver-change { font-size: 10px; color: #7A7468; font-family: 'Courier New', monospace; }
+  .driver-tag { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;
+                font-weight: 700; letter-spacing: 0.04em; }
+  .driver-tag.worst    { background: #E5484D18; color: #E5484D; border: 1px solid #E5484D40; }
+  .driver-tag.trending { background: #F0C04018; color: #B8900A; border: 1px solid #F0C04040; }
+
+  /* Action box */
+  .action-box { background: #EEF4FF; border: 1px solid #C0D4F0; border-radius: 8px; padding: 14px 16px;
+                border-left: 4px solid #3A6AA0; }
+  .action-box-title { font-size: 11px; font-weight: 700; color: #3A6AA0; letter-spacing: 0.06em;
+                       text-transform: uppercase; font-family: 'Courier New', monospace; margin-bottom: 6px; }
+  .action-items { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .action-item { display: flex; gap: 8px; font-size: 12px; color: #2C3A50; line-height: 1.5; }
+  .action-item::before { content: "→"; color: #3A6AA0; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<div class="nav">
+  <div class="nav-logo">NAVIGATOR</div>
+  <div class="nav-sep"></div>
+  <div class="nav-wb">Navigator_Predictive_Analytics_v2_Extract</div>
+  <div class="nav-persona">
+    <button class="persona-btn active">Chief Operating Officer</button>
+    <button class="persona-btn">Capacity Manager</button>
+    <button class="persona-btn">Staffing Coordinator</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ════════════════════════════════════════════ -->
+  <!-- SECTION 1: DAILY BRIEF                       -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="brief-header">
+    <span class="brief-title">Today's Intelligence Brief</span>
+    <span class="brief-date">Friday, June 6 2026 · Data as of 8:04 AM</span>
+  </div>
+
+  <div class="brief-cards">
+
+    <!-- Critical -->
+    <div class="brief-card critical">
+      <div class="brief-signal">
+        <div class="signal-dot critical"></div>
+        <span class="signal-label critical">Critical — Action Required</span>
+      </div>
+      <div class="brief-card-title">ICU &amp; Emergency Staffing at Breaking Point</div>
+      <div class="brief-card-body">
+        Predicted staffing shortage reaches <strong>-0.84 FTE</strong> in ICU and <strong>-0.76 FTE</strong> in Emergency by Thursday. Both departments flagged AMBER across all 5 facilities. Gap has worsened 42.9% from last period.
+      </div>
+      <div class="brief-action critical">
+        <span class="brief-action-label">→ RECOMMENDED ACTION</span>
+        Review on-call roster for ICU and Emergency immediately. Escalate to Nursing Director. Consider agency staff for Thursday–Friday shifts.
+      </div>
+    </div>
+
+    <!-- Warning -->
+    <div class="brief-card warning">
+      <div class="brief-signal">
+        <div class="signal-dot warning"></div>
+        <span class="signal-label warning">Watch — Monitor Closely</span>
+      </div>
+      <div class="brief-card-title">Westside Hospital Occupancy Trending Toward Capacity</div>
+      <div class="brief-card-body">
+        Facility occupancy rising from 73.8% to 74.9% over 7 days. At current trajectory, Westside will exceed 76% threshold by next week. Cardiology and Rehab are primary contributors.
+      </div>
+      <div class="brief-action warning">
+        <span class="brief-action-label">→ WATCH POINT</span>
+        Flag Westside admissions to Facility Manager. Prepare contingency plan if occupancy exceeds 76% threshold. No immediate action required.
+      </div>
+    </div>
+
+    <!-- Stable -->
+    <div class="brief-card stable">
+      <div class="brief-signal">
+        <div class="signal-dot stable"></div>
+        <span class="signal-label stable">Stable — No Action</span>
+      </div>
+      <div class="brief-card-title">Overall Productivity &amp; Referral Pipeline On Track</div>
+      <div class="brief-card-body">
+        Productivity ratio holding at 90.7% — within expected range. Referral volume 79,227 YTD with consistent mix across all departments. No anomalies detected.
+      </div>
+      <div class="brief-action stable">
+        <span class="brief-action-label">→ STATUS</span>
+        No action required. Continue monitoring standard refresh cycle. Next scheduled review Friday PM.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!-- SECTION 2: KPI TILES (CURRENT VALUES)        -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="section-header">
+    <span class="section-title">Current Values</span>
+    <span class="section-count">6 KPIs</span>
+  </div>
+
+  <div class="kpi-grid">
+
+    <!-- KPI 1: Occupancy Rate -->
+    <div class="kpi-tile has-stable">
+      <div class="kpi-tile-header">
+        <div class="kpi-rag-dot stable"></div>
+        <span class="kpi-name">Average Occupancy Rate</span>
+        <span class="kpi-badge l1">L1</span>
+      </div>
+      <div class="kpi-value neutral">74.4%</div>
+      <div class="kpi-trend"><span class="trend-arrow flat">→</span> +1.2% vs last period</div>
+      <div class="kpi-driver-hint">
+        <div class="driver-dot" style="background:#5BAD7A"></div>
+        Westside highest: 74.9% · ICU lowest: 68.6%
+      </div>
+    </div>
+
+    <!-- KPI 2: Staffing Gap -->
+    <div class="kpi-tile has-critical" style="cursor:pointer" onclick="document.getElementById('modal').style.display='flex'">
+      <div class="kpi-tile-header">
+        <div class="kpi-rag-dot critical"></div>
+        <span class="kpi-name">Current Staffing Gap</span>
+        <span class="kpi-badge l1">L1</span>
+      </div>
+      <div class="kpi-value critical">-14.5%</div>
+      <div class="kpi-trend"><span class="trend-arrow down">▼</span> -42.9% vs last period</div>
+      <div class="kpi-driver-hint">
+        <div class="driver-dot" style="background:#E5484D"></div>
+        Worst: ICU -0.84 FTE · Emergency -0.76 FTE
+      </div>
+      <div style="font-size:10px;color:#9A9490;margin-top:6px;font-family:monospace;">Click to see drivers →</div>
+    </div>
+
+    <!-- KPI 3: Productivity -->
+    <div class="kpi-tile has-stable">
+      <div class="kpi-tile-header">
+        <div class="kpi-rag-dot stable"></div>
+        <span class="kpi-name">Overall Productivity Ratio</span>
+        <span class="kpi-badge l1">L1</span>
+      </div>
+      <div class="kpi-value neutral">90.7%</div>
+      <div class="kpi-trend"><span class="trend-arrow flat">→</span> +0.1% stable</div>
+      <div class="kpi-driver-hint">
+        <div class="driver-dot" style="background:#5BAD7A"></div>
+        All facilities within normal range
+      </div>
+    </div>
+
+    <!-- KPI 4: Predicted Shortage -->
+    <div class="kpi-tile has-warning">
+      <div class="kpi-tile-header">
+        <div class="kpi-rag-dot warning"></div>
+        <span class="kpi-name">Predicted Staffing Shortage</span>
+        <span class="kpi-badge l1">L1</span>
+      </div>
+      <div class="kpi-value warning">-0.70</div>
+      <div class="kpi-trend"><span class="trend-arrow flat">→</span> +0.1% flat</div>
+      <div class="kpi-driver-hint">
+        <div class="driver-dot" style="background:#F0C040"></div>
+        CI: -1.70 to +0.30 · Forecast horizon: 7 days
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- EXPANDED KPI MODAL — Staffing Gap            -->
+<!-- ════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-name">Current Staffing Gap Rate &nbsp;<span style="color:#E5484D;font-size:10px;background:#E5484D18;padding:2px 6px;border-radius:3px;border:1px solid #E5484D40">L1</span></div>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('modal').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="modal-value">-14.5%</div>
+      <div class="kpi-trend" style="margin-top:4px">
+        <span class="trend-arrow down">▼</span> 42.9% worse vs prior period &nbsp;|&nbsp; Staffing Gap Trend by Facility
+      </div>
+      <div class="modal-desc">What percentage of required staffing is unfilled across the network?</div>
+
+      <!-- Chart placeholder -->
+      <div class="modal-chart-area">
+        [ Staffing Gap Trend chart — 5 facility lines, Jan–May ]
+      </div>
+
+      <!-- KEY INSIGHT -->
+      <div class="modal-section">
+        <div class="modal-section-title insight">Key Insight</div>
+        <div class="insight-text">
+          Staffing gap worsened from -11.0% to -15.8% over the period. Despite a brief recovery in early May, daily gaps remain volatile — Westside Hospital fluctuated between -13.3% and -23.9% over the last 10 days. ICU and Emergency departments are consistently the most understaffed across all facilities.
+        </div>
+      </div>
+
+      <!-- WHAT'S DRIVING THIS -->
+      <div class="modal-section">
+        <div class="modal-section-title critical">What's Driving This</div>
+        <div class="drivers-list">
+          <div class="driver-row">
+            <span class="driver-rank">1</span>
+            <div class="driver-dot-lg critical"></div>
+            <span class="driver-name">ICU</span>
+            <span class="driver-value critical">-0.84 FTE</span>
+            <span class="driver-change">↑ worsening</span>
+            <span class="driver-tag worst">WORST</span>
+          </div>
+          <div class="driver-row">
+            <span class="driver-rank">2</span>
+            <div class="driver-dot-lg critical"></div>
+            <span class="driver-name">Emergency</span>
+            <span class="driver-value critical">-0.76 FTE</span>
+            <span class="driver-change">↑ trending up</span>
+            <span class="driver-tag trending">WATCH</span>
+          </div>
+          <div class="driver-row">
+            <span class="driver-rank">3</span>
+            <div class="driver-dot-lg warning"></div>
+            <span class="driver-name">Rehab</span>
+            <span class="driver-value warning">-0.70 FTE</span>
+            <span class="driver-change">→ stable</span>
+            <span class="driver-tag" style="background:#F0C04018;color:#B8900A;border:1px solid #F0C04040">STABLE</span>
+          </div>
+          <div class="driver-row">
+            <span class="driver-rank">4</span>
+            <div class="driver-dot-lg stable"></div>
+            <span class="driver-name">Med-Surg</span>
+            <span class="driver-value stable">-0.68 FTE</span>
+            <span class="driver-change">↓ improving</span>
+            <span class="driver-tag" style="background:#5BAD7A18;color:#3A8A5A;border:1px solid #5BAD7A40">OK</span>
+          </div>
+          <div class="driver-row">
+            <span class="driver-rank">5</span>
+            <div class="driver-dot-lg stable"></div>
+            <span class="driver-name">Cardiology</span>
+            <span class="driver-value stable">-0.60 FTE</span>
+            <span class="driver-change">→ stable</span>
+            <span class="driver-tag" style="background:#5BAD7A18;color:#3A8A5A;border:1px solid #5BAD7A40">OK</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECOMMENDED ACTION -->
+      <div class="modal-section">
+        <div class="modal-section-title action">Recommended Action</div>
+        <div class="action-box">
+          <div class="action-box-title">Steps to address staffing gap</div>
+          <ul class="action-items">
+            <li class="action-item">Contact on-call pool for ICU and Emergency — Thursday and Friday shifts are highest risk.</li>
+            <li class="action-item">Escalate to Nursing Director: request agency staff authorization for ICU if gap exceeds -1.0 FTE.</li>
+            <li class="action-item">Review Westside Hospital specifically — its gap fluctuates most severely (-13% to -24%).</li>
+            <li class="action-item">No action needed for Cardiology and Med-Surg — both within acceptable range.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

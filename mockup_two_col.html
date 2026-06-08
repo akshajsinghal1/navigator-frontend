@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Navigator — Two Column: Daily Briefing + Action Items</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #F4F1EA; font-family: Georgia, serif; color: #2C2B26; }
+
+/* ── NAV ── */
+.nav {
+  background: #F9F7F2;
+  border-bottom: 1px solid #E5E0D5;
+  padding: 10px 28px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logo { font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.sep  { width: 1px; height: 14px; background: #D5CFC4; }
+.wb   { font-size: 11px; color: #7A7468; font-family: monospace; }
+.personas { margin-left: auto; display: flex; gap: 6px; }
+.pb {
+  padding: 4px 10px; border-radius: 4px;
+  border: 1px solid #D5CFC4; font-size: 10px;
+  font-family: monospace; cursor: pointer;
+  background: transparent; color: #7A7468;
+}
+.pb.active { background: #C8902A; color: #fff; border-color: #C8902A; }
+
+.main { max-width: 1300px; margin: 0 auto; padding: 20px 28px; }
+
+/* ── TWO-COLUMN HEADER ── */
+.header-row {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* ── DAILY BRIEFING PANEL ── */
+.briefing-panel {
+  background: #F9F7F2;
+  border: 1px solid #E5E0D5;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.panel-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: monospace;
+  color: #9A9490;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel-title span {
+  font-size: 9px;
+  color: #7A7468;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.brief-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #D5CFC4 transparent;
+}
+.brief-cards::-webkit-scrollbar { height: 4px; }
+.brief-cards::-webkit-scrollbar-track { background: transparent; }
+.brief-cards::-webkit-scrollbar-thumb { background: #D5CFC4; border-radius: 2px; }
+.bcard {
+  background: #F4F1EA;
+  border: 1px solid #EAE5DC;
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid transparent;
+  min-width: 220px;
+  width: 220px;
+  flex-shrink: 0;
+}
+.bcard.c { border-left-color: #E5484D; }
+.bcard.w { border-left-color: #F0C040; }
+.bcard.s { border-left-color: #5BAD7A; }
+
+.bsig { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.bdot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.bdot.c { background: #E5484D; }
+.bdot.w { background: #F0C040; }
+.bdot.s { background: #5BAD7A; }
+.blabel {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; font-family: monospace;
+}
+.blabel.c { color: #E5484D; }
+.blabel.w { color: #B8900A; }
+.blabel.s { color: #3A8A5A; }
+
+.btitle { font-size: 11px; font-weight: 700; color: #2C2B26; margin-bottom: 4px; line-height: 1.3; }
+.bbody  { font-size: 10px; color: #5A5650; line-height: 1.5; }
+
+/* ── ACTION ITEMS PANEL ── */
+.action-panel {
+  background: #F9F7F2;
+  border: 1px solid #E5E0D5;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+}
+.ap-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: monospace;
+  color: #9A9490;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ap-badge {
+  background: #E5484D14;
+  color: #E5484D;
+  border: 1px solid #E5484D35;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.ap-badge.amber {
+  background: #F0C04014;
+  color: #B8900A;
+  border-color: #F0C04040;
+}
+.ap-badge.green {
+  background: #5BAD7A14;
+  color: #3A8A5A;
+  border-color: #5BAD7A40;
+}
+.ap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  overflow-y: auto;
+  max-height: 160px;
+  scrollbar-width: thin;
+  scrollbar-color: #D5CFC4 transparent;
+}
+.ap-list::-webkit-scrollbar { width: 4px; }
+.ap-list::-webkit-scrollbar-track { background: transparent; }
+.ap-list::-webkit-scrollbar-thumb { background: #D5CFC4; border-radius: 2px; }
+.ap-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid #F0EDE5;
+  cursor: pointer;
+}
+.ap-item:last-child { border-bottom: none; padding-bottom: 0; }
+.ap-item:first-child { padding-top: 0; }
+.ap-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.ap-dot.c { background: #E5484D; }
+.ap-dot.w { background: #F0C040; }
+.ap-dot.s { background: #5BAD7A; }
+.ap-content { flex: 1; }
+.ap-kpi {
+  font-size: 8px; font-family: monospace;
+  color: #9A9490; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 1px;
+}
+.ap-text { font-size: 10px; color: #2C2B26; line-height: 1.4; }
+.ap-arrow {
+  font-size: 10px; color: #C8902A;
+  font-family: monospace; flex-shrink: 0;
+  margin-top: 2px; opacity: 0.6;
+}
+
+/* ── KPI TILES ── */
+.section-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.sh-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #7A7468; font-family: monospace;
+}
+.sh-count { font-size: 10px; color: #9A9490; font-family: monospace; }
+
+.kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kpi {
+  background: #F9F7F2; border: 1px solid #E5E0D5; border-radius: 8px;
+  padding: 12px 14px; border-left: 3px solid transparent;
+}
+.kpi.c { border-left-color: #E5484D; }
+.kpi.w { border-left-color: #F0C040; }
+.kpi.s { border-left-color: #5BAD7A; }
+
+.kpi-hdr { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+.kpi-dot { width: 6px; height: 6px; border-radius: 50%; }
+.kpi-dot.c { background: #E5484D; }
+.kpi-dot.w { background: #F0C040; }
+.kpi-dot.s { background: #5BAD7A; }
+.kpi-name {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: #5A5650; font-family: monospace;
+}
+.kpi-badge {
+  margin-left: auto; font-size: 9px; font-weight: 700; padding: 1px 4px;
+  border-radius: 3px; font-family: monospace; color: #C8902A;
+  background: #C8902A18; border: 1px solid #C8902A40;
+}
+.kpi-val { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-family: monospace; }
+.kpi-val.c { color: #E5484D; }
+.kpi-val.w { color: #B8900A; }
+.kpi-val.n { color: #2C2B26; }
+.kpi-trend { font-size: 10px; color: #7A7468; margin-top: 2px; }
+.kpi-hint {
+  background: #F0EDE5; border-radius: 3px; padding: 4px 6px;
+  margin-top: 6px; font-size: 9px; color: #5A5650; font-family: monospace;
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<div class="nav">
+  <div class="logo">NAVIGATOR</div>
+  <div class="sep"></div>
+  <div class="wb">Navigator_Predictive_Analytics_v2_Extract</div>
+  <div class="personas">
+    <button class="pb active">Chief Operating Officer</button>
+    <button class="pb">Capacity Manager</button>
+    <button class="pb">Staffing Coordinator</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- TWO-COLUMN HEADER -->
+  <div class="header-row">
+
+    <!-- LEFT: Daily Briefing -->
+    <div class="briefing-panel">
+      <div class="panel-title">Daily Briefing <span>— refreshed 8 min ago</span></div>
+      <div class="brief-cards">
+        <div class="bcard c">
+          <div class="bsig"><div class="bdot c"></div><span class="blabel c">Critical</span></div>
+          <div class="btitle">ICU &amp; Emergency Staffing at Breaking Point</div>
+          <div class="bbody">Predicted shortage reaches -0.84 FTE in ICU and -0.76 FTE in Emergency. Gap worsened 42.9% from last period.</div>
+        </div>
+        <div class="bcard w">
+          <div class="bsig"><div class="bdot w"></div><span class="blabel w">Watch</span></div>
+          <div class="btitle">Westside Occupancy Trending Toward Capacity</div>
+          <div class="bbody">Facility occupancy rising 73.8% → 74.9%. Cardiology and Rehab are primary contributors over 7-day window.</div>
+        </div>
+        <div class="bcard s">
+          <div class="bsig"><div class="bdot s"></div><span class="blabel s">Stable</span></div>
+          <div class="btitle">Productivity &amp; Referrals On Track</div>
+          <div class="bbody">Productivity ratio at 90.7%, within expected range. Referral volume 79,227 YTD. No anomalies detected.</div>
+        </div>
+        <div class="bcard w">
+          <div class="bsig"><div class="bdot w"></div><span class="blabel w">Watch</span></div>
+          <div class="btitle">North Facility Discharge Delays Rising</div>
+          <div class="bbody">Average LOS at North up 0.3d this week. Cardiology driving 60% of the increase. Discharge planning review recommended.</div>
+        </div>
+        <div class="bcard c">
+          <div class="bsig"><div class="bdot c"></div><span class="blabel c">Critical</span></div>
+          <div class="btitle">Agency Staff Cost Spike — East Campus</div>
+          <div class="bbody">Agency utilization at East jumped 18% in 3 days. Cost per shift exceeding budget threshold by 22%.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Action Items -->
+    <div class="action-panel">
+      <div class="ap-title">
+        Action Items
+        <span class="ap-badge">3 required</span>
+      </div>
+      <div class="ap-list">
+        <div class="ap-item">
+          <div class="ap-dot c"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Current Staffing Gap</div>
+            <div class="ap-text">Contact on-call pool for ICU — Thursday &amp; Friday shifts at risk</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot c"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Predicted Staffing Shortage</div>
+            <div class="ap-text">Escalate to Nursing Director if gap exceeds -1.0 FTE</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot w"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Occupancy Trend — Westside</div>
+            <div class="ap-text">Flag Westside admissions to Facility Manager</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot s"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Productivity Ratio</div>
+            <div class="ap-text">No action needed — all facilities within range</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot w"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Avg Length of Stay</div>
+            <div class="ap-text">Review Cardiology discharge planning — LOS trending up 0.3d this week</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot c"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Staffing by Facility — North</div>
+            <div class="ap-text">North facility gap at -2.1 FTE — highest among all facilities, requires immediate escalation</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+        <div class="ap-item">
+          <div class="ap-dot s"></div>
+          <div class="ap-content">
+            <div class="ap-kpi">Referral Volume YTD</div>
+            <div class="ap-text">No action needed — referral pipeline consistent with plan</div>
+          </div>
+          <div class="ap-arrow">›</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end header-row -->
+
+  <!-- KPI TILES — unchanged position -->
+  <div class="section-hdr">
+    <span class="sh-title">Current Values</span>
+    <span class="sh-count">6 KPIs · COO</span>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi s">
+      <div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Avg Occupancy Rate</span><span class="kpi-badge">L1</span></div>
+      <div class="kpi-val n">74.4%</div>
+      <div class="kpi-trend">→ +1.2% · stable</div>
+    </div>
+    <div class="kpi c">
+      <div class="kpi-hdr"><div class="kpi-dot c"></div><span class="kpi-name">Current Staffing Gap</span><span class="kpi-badge">L1</span></div>
+      <div class="kpi-val c">-14.5%</div>
+      <div class="kpi-trend">▼ -42.9% · critical</div>
+      <div class="kpi-hint">Worst: ICU -0.84 FTE · Emergency -0.76 FTE</div>
+    </div>
+    <div class="kpi s">
+      <div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Productivity Ratio</span><span class="kpi-badge">L1</span></div>
+      <div class="kpi-val n">90.7%</div>
+      <div class="kpi-trend">→ +0.1% · stable</div>
+    </div>
+    <div class="kpi w">
+      <div class="kpi-hdr"><div class="kpi-dot w"></div><span class="kpi-name">Predicted FTE Shortage</span><span class="kpi-badge">L1</span></div>
+      <div class="kpi-val w">-0.70</div>
+      <div class="kpi-trend">→ flat · CI: -1.70 to +0.30</div>
+    </div>
+    <div class="kpi s">
+      <div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Referral Volume YTD</span><span class="kpi-badge">L2</span></div>
+      <div class="kpi-val n">79,227</div>
+      <div class="kpi-trend">▲ +3.1% · stable</div>
+    </div>
+    <div class="kpi s">
+      <div class="kpi-hdr"><div class="kpi-dot s"></div><span class="kpi-name">Avg Length of Stay</span><span class="kpi-badge">L2</span></div>
+      <div class="kpi-val n">4.2d</div>
+      <div class="kpi-trend">→ -0.1d · stable</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
