@@ -284,17 +284,26 @@ def _refresh_summaries(company_id: str, workbook_content_url: str) -> None:
             return
 
         # Collect unique views and fetch fresh rows
+        # [TABLE] views → fetch from Hyper extract; others → fetch from Tableau
         view_rows: dict[str, list[dict]] = {}
         for pv in config.personas:
             for sec in pv.dashboard_sections:
                 for kpi in sec.kpis:
-                    if kpi.l1 and kpi.l1.view_name and kpi.l1.view_name not in view_rows:
+                    view_name = kpi.l1.view_name if kpi.l1 else None
+                    if not view_name or view_name in view_rows:
+                        continue
+                    if view_name.startswith("[TABLE]"):
+                        from pipeline.l1_refresher import _fetch_hyper_table
+                        rows = _fetch_hyper_table(view_name, wb["luid"])
+                        view_rows[view_name] = rows
+                        log.debug("Freshness: Hyper table '%s' — %d rows", view_name, len(rows))
+                    else:
                         try:
-                            rows = conn.get_view_data_by_name(wb["luid"], kpi.l1.view_name)
-                            view_rows[kpi.l1.view_name] = rows or []
+                            rows = conn.get_view_data_by_name(wb["luid"], view_name)
+                            view_rows[view_name] = rows or []
                         except Exception as e:
-                            log.debug("Freshness: could not fetch view '%s': %s", kpi.l1.view_name, e)
-                            view_rows[kpi.l1.view_name] = []
+                            log.debug("Freshness: could not fetch view '%s': %s", view_name, e)
+                            view_rows[view_name] = []
     except Exception as exc:
         log.warning("Freshness: could not fetch fresh view data: %s — using stored values", exc)
         view_rows = {}

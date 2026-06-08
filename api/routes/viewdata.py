@@ -110,6 +110,81 @@ def clear_view_cache(workbook_content_url: str) -> None:
         log.info("View cache cleared for workbook '%s' (%d entries)", workbook_content_url, len(to_delete))
 
 
+# ── Hyper extract reader ─────────────────────────────────────────────────────
+# Cached per workbook so we only download + read the .hyper once per process.
+_hyper_cache: dict[str, tuple[dict, float]] = {}   # workbook → ({table→rows}, ts)
+_HYPER_CACHE_TTL = 3600  # 1 hour
+
+
+def _get_hyper_table_data(workbook: str, view: str, max_rows: int) -> dict:
+    """
+    Serve data for [TABLE] view names from the workbook's Hyper extract.
+    Downloads the .twbx once, caches the extracted tables for 1 hour.
+    """
+    import os, zipfile, tempfile
+    from pipeline.hyper_extractor import _read_hyper
+
+    # Normalise table name from "[TABLE] demo_bed_utilization_hourly"
+    table_name = view.replace("[TABLE]", "").strip().strip('"')
+
+    # Check cache
+    cache_key = workbook.lower()
+    cached = _hyper_cache.get(cache_key)
+    if cached:
+        tables_data, ts = cached
+        if time.time() - ts < _HYPER_CACHE_TTL:
+            rows = tables_data.get(table_name, [])
+            sliced = rows if not max_rows else rows[:max_rows]
+            log.debug("Hyper cache hit: %s / %s (%d rows)", workbook, table_name, len(sliced))
+            return {"workbook": workbook, "view": view, "rows": sliced, "row_count": len(sliced)}
+        else:
+            del _hyper_cache[cache_key]
+
+    # Download workbook and extract Hyper file
+    log.info("Hyper: downloading workbook '%s' for table '%s'", workbook, table_name)
+    try:
+        from tableau.connector import TableauConnector
+        import tableauserverclient as TSC
+
+        conn = TableauConnector(
+            server_url = os.environ["TABLEAU_SERVER_URL"],
+            site_name  = os.environ.get("TABLEAU_SITE_NAME", ""),
+            pat_name   = os.environ["TABLEAU_PAT_NAME"],
+            pat_secret = os.environ["TABLEAU_PAT_SECRET"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with conn:
+                all_wbs, _ = conn._server.workbooks.get()
+                wb = next((w for w in all_wbs if w.content_url == workbook
+                           or w.name == workbook), None)
+                if not wb:
+                    raise ValueError(f"Workbook '{workbook}' not found")
+                dl_path = conn._server.workbooks.download(
+                    wb.id, filepath=os.path.join(tmpdir, "wb"), include_extract=True
+                )
+                with zipfile.ZipFile(dl_path) as z:
+                    hyper_files = [f for f in z.namelist() if f.endswith(".hyper")]
+                    if not hyper_files:
+                        raise ValueError("No Hyper extract in workbook")
+                    z.extract(hyper_files[0], tmpdir)
+                hyper_path = os.path.join(tmpdir, hyper_files[0])
+                tables = _read_hyper(hyper_path, sample_rows=1, max_full_rows=0)
+
+        # Build cache: table_name → rows
+        tables_data = {t.table_name: t.full_rows for t in tables}
+        _hyper_cache[cache_key] = (tables_data, time.time())
+        log.info("Hyper: cached %d tables for workbook '%s'", len(tables), workbook)
+
+    except Exception as exc:
+        log.error("Hyper data fetch failed: workbook=%s table=%s error=%s", workbook, table_name, exc)
+        raise HTTPException(status_code=502, detail=f"Hyper data fetch failed: {exc}")
+
+    rows   = tables_data.get(table_name, [])
+    sliced = rows if not max_rows else rows[:max_rows]
+    return {"workbook": workbook, "view": view, "rows": sliced, "row_count": len(sliced)}
+
+
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.get("")
@@ -119,14 +194,18 @@ def get_view_data(
     max_rows: int = Query(0,   description="Max rows to return (0 = no limit)"),
 ):
     """
-    Fetch live Tableau view data for a KPI chart.
+    Fetch live data for a KPI chart.
 
-    Returns JSON rows that the frontend transforms into ECharts options
-    using the x_axis / y_axis / aggregation hints stored in the config.
+    Handles two source types:
+      [TABLE] views  → read directly from the workbook's Hyper extract
+      Regular views  → fetch live from Tableau (existing behaviour)
 
-    Caches workbook LUID and view rows in-process to avoid redundant
-    Tableau connections on every chart render.
+    Caches results in-process (15-minute TTL) to avoid redundant I/O.
     """
+    # ── [TABLE] source: read from Hyper extract, not Tableau ─────────────────
+    if view.startswith("[TABLE]"):
+        return _get_hyper_table_data(workbook, view, max_rows)
+
     # ── Check view cache first ────────────────────────────────────────────────
     cache_key = (workbook.lower(), view.lower())
     if cache_key in _view_cache:

@@ -296,9 +296,15 @@ class QAAgent(BaseAgent):
 
     def _tool_fetch_view_data(self, inp: dict) -> dict:
         view_name = inp["view_name"]
-        # Reuse profiler-seeded data when present
+        # Reuse profiler-seeded data when present (includes Hyper [TABLE] entries)
         rows = self._row_cache.get(view_name)
         if rows is None:
+            if view_name.startswith("[TABLE]"):
+                # [TABLE] views are Hyper tables — only in cache, not in Tableau
+                raise ToolError(
+                    f"[TABLE] view '{view_name}' is a Hyper table — data is only available "
+                    f"if it was loaded during the pipeline run. It may not be in the current cache."
+                )
             try:
                 rows = self._connector.get_view_data_by_name(
                     workbook_luid = self._workbook_luid,
@@ -320,6 +326,8 @@ class QAAgent(BaseAgent):
 
         # Data is pre-loaded from the profiler; fetch lazily if somehow missing
         if rows is None:
+            if view_name.startswith("[TABLE]"):
+                raise ToolError(f"[TABLE] view '{view_name}' not in cache — call fetch_view_data first")
             try:
                 rows = self._connector.get_view_data_by_name(
                     workbook_luid=self._workbook_luid, view_name=view_name, max_rows=0,

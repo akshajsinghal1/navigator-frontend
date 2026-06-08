@@ -717,8 +717,12 @@ class OrchestratorAgent(BaseAgent):
 
         log.info("Spinning up domain agent for: %s (%d KPI designs)", domain_name, len(kpi_designs))
 
-        # Seed each domain agent with the profiler's pre-fetched data for its views
+        # Seed each domain agent with:
+        # 1. Its assigned Tableau views
+        # 2. ALL Hyper [TABLE] entries — these are the primary data source for ALL domains
         domain_cache = {v: self._view_cache[v] for v in relevant_views if v in self._view_cache}
+        hyper_entries = {k: v for k, v in self._view_cache.items() if k.startswith("[TABLE]")}
+        domain_cache.update(hyper_entries)
 
         with self._domain_sem:   # max 5 domain agents run concurrently
             agent  = DomainAgent(self._connector, self._workbook_luid,

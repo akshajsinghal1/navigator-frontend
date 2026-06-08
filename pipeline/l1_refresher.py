@@ -25,6 +25,45 @@ from tableau.view_data import parse_value, normalize_rows
 log = logging.getLogger(__name__)
 
 
+def _fetch_hyper_table(view_name: str, workbook_luid: str, connector=None) -> list[dict]:
+    """
+    Fetch data for a [TABLE] Hyper source by downloading the workbook extract.
+    Always creates its own TableauConnector from env vars — safe to call from any context.
+    Returns full rows for the named table, or [] on failure.
+    """
+    import os, zipfile, tempfile
+    from tableau.connector import TableauConnector
+    from pipeline.hyper_extractor import _read_hyper
+
+    table_name = view_name.replace("[TABLE]", "").strip().strip('"')
+    try:
+        tc = TableauConnector(
+            server_url = os.environ["TABLEAU_SERVER_URL"],
+            site_name  = os.environ.get("TABLEAU_SITE_NAME", ""),
+            pat_name   = os.environ["TABLEAU_PAT_NAME"],
+            pat_secret = os.environ["TABLEAU_PAT_SECRET"],
+        )
+        with tc, tempfile.TemporaryDirectory() as tmpdir:
+            dl_path = tc._server.workbooks.download(
+                workbook_luid,
+                filepath=os.path.join(tmpdir, "wb"),
+                include_extract=True,
+            )
+            with zipfile.ZipFile(dl_path) as z:
+                hyper_files = [f for f in z.namelist() if f.endswith(".hyper")]
+                if not hyper_files:
+                    return []
+                z.extract(hyper_files[0], tmpdir)
+            hyper_path = os.path.join(tmpdir, hyper_files[0])
+            tables = _read_hyper(hyper_path, sample_rows=1, max_full_rows=0)
+            for t in tables:
+                if t.table_name == table_name or t.table_name.strip('"') == table_name:
+                    return t.full_rows
+    except Exception as exc:
+        log.warning("Hyper table fetch failed for '%s': %s", view_name, exc)
+    return []
+
+
 def refresh_l1(
     config_dict: dict[str, Any],
     connector,
@@ -67,14 +106,20 @@ def refresh_l1(
                 field_name = l1.get("field_name", "")
 
                 # Fetch view data (cached per view)
+                # [TABLE] views are Hyper raw tables — fetch from Hyper, not Tableau
                 if view_name not in view_cache:
-                    try:
-                        raw = connector.get_view_data_by_name(workbook_luid=workbook_luid, view_name=view_name, max_rows=200)
-                        view_cache[view_name] = raw
-                        log.info("Fetched view '%s' — %d rows", view_name, len(raw))
-                    except Exception as exc:
-                        log.warning("Could not fetch view '%s': %s", view_name, exc)
-                        view_cache[view_name] = []
+                    if view_name.startswith("[TABLE]"):
+                        rows = _fetch_hyper_table(view_name, workbook_luid, connector)
+                        view_cache[view_name] = rows
+                        log.info("Fetched Hyper table '%s' — %d rows", view_name, len(rows))
+                    else:
+                        try:
+                            raw = connector.get_view_data_by_name(workbook_luid=workbook_luid, view_name=view_name, max_rows=200)
+                            view_cache[view_name] = raw
+                            log.info("Fetched view '%s' — %d rows", view_name, len(raw))
+                        except Exception as exc:
+                            log.warning("Could not fetch view '%s': %s", view_name, exc)
+                            view_cache[view_name] = []
 
                 raw_rows = normalize_rows(view_cache[view_name])
 

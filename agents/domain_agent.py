@@ -50,10 +50,21 @@ USE get_field_data FIRST for any KPI field you need:
 The system resolves which Hyper table to use and applies any formula automatically.
 You get the same interface as fetch_view_data but with FULL raw data (not 355 aggregated rows).
 
+CRITICAL — when you use get_field_data, the response includes:
+  "resolved_from": "[TABLE] demo_bed_utilization_hourly"   ← use this as l1_view_name
+  "field":         "occupancy_percent"                      ← use this as l1_field_name
+
+YOU MUST set l1_view_name and l1_field_name to these values when emitting the KPI.
+NEVER set l1_view_name to a Tableau view if you used get_field_data — that breaks live refresh.
+
+Example:
+  get_field_data("Occupancy %") returns resolved_from="[TABLE] demo_bed_utilization_hourly"
+  → emit KPI with l1_view_name="[TABLE] demo_bed_utilization_hourly", l1_field_name="occupancy_percent"
+
 USE fetch_view_data ONLY when:
   (a) Field not found by get_field_data
   (b) Pre-computed ML forecast views (FORECAST_OCCUPANCY, FORECAST_STAFFING_RISK)
-  (c) You need a specific view's pre-computed breakdown for raw_data (chart rendering)
+  (c) You need trend/time-series raw_data for chart rendering alongside a get_field_data value
 
 The FIELD RESOLVER section in your context lists every available field and its source.
 Always check it before deciding to use fetch_view_data.
