@@ -362,10 +362,16 @@ class PipelineRunner:
                             total_v_enriched = len(view_data_cache)
                             profile = profile_workbook(view_data_cache, total_views=total_v_enriched)
                             profile_text = format_profile_for_agent(profile)
+                        # Add [TABLE] synthetic view names to available_views so the
+                        # orchestrator knows domain agents can fetch raw table data
+                        table_view_names = hyper_schema.table_view_names()
+                        available_views  = list(available_views) + table_view_names
                         log.info(
-                            "Hyper: %d tables, %d raw cols, %s rows, %d calc fields",
+                            "Hyper: %d tables, %d raw cols, %s rows, %d calc fields — "
+                            "added %d table views to available_views",
                             len(hyper_schema.tables), hyper_schema.total_columns,
                             f"{hyper_schema.total_rows:,}", len(hyper_schema.calc_fields),
+                            len(table_view_names),
                         )
                         # Append hyper summary to profile_text for orchestrator
                         profile_text = (profile_text or "") + "\n\n" + hyper_summary

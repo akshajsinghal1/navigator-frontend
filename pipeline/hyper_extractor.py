@@ -47,8 +47,9 @@ class HyperTable:
     schema:      str
     table_name:  str
     row_count:   int
-    columns:     list[HyperColumn]  = field(default_factory=list)
+    columns:     list[HyperColumn]    = field(default_factory=list)
     sample_rows: list[dict[str, Any]] = field(default_factory=list)  # up to 5 rows
+    full_rows:   list[dict[str, Any]] = field(default_factory=list)  # up to max_full_rows
 
 
 @dataclass
@@ -76,14 +77,21 @@ class HyperSchema:
     def as_profiler_views(self) -> dict[str, list[dict]]:
         """
         Convert HyperSchema into the same {view_name: [rows]} format the
-        profiler already understands — so profile_workbook() works unchanged.
-        Each table becomes a synthetic "view" whose rows contain every column.
+        profiler and domain agents already understand.
+        Each table becomes a synthetic view with its FULL row data (up to max_full_rows)
+        so domain agents can compute real KPI values from raw columns.
         """
         result: dict[str, list[dict]] = {}
         for table in self.tables:
             key = f"[TABLE] {table.table_name}"
-            result[key] = table.sample_rows
+            # Use full_rows so agents can aggregate properly;
+            # fall back to sample_rows if full data wasn't loaded
+            result[key] = table.full_rows if table.full_rows else table.sample_rows
         return result
+
+    def table_view_names(self) -> list[str]:
+        """Return synthetic view names for all tables — for available_views list."""
+        return [f"[TABLE] {t.table_name}" for t in self.tables]
 
     def summary_text(self) -> str:
         """Compact text block for the orchestrator system prompt."""
@@ -110,7 +118,7 @@ class HyperSchema:
 
 # ── Hyper reader ───────────────────────────────────────────────────────────────
 
-def _read_hyper(hyper_path: str, sample_rows: int = 5) -> list[HyperTable]:
+def _read_hyper(hyper_path: str, sample_rows: int = 5, max_full_rows: int = 0) -> list[HyperTable]:
     """Read all tables from a .hyper file. Returns [] if tableauhyperapi missing."""
     try:
         from tableauhyperapi import HyperProcess, Connection, Telemetry
@@ -143,18 +151,43 @@ def _read_hyper(hyper_path: str, sample_rows: int = 5) -> list[HyperTable]:
                             for c in td.columns
                         ]
 
-                        # Sample rows
-                        col_names   = [c.name for c in cols]
-                        col_exprs   = ", ".join(f"{table_name}.{c.name}" for c in td.columns)
-                        sample_sql  = (
+                        # Sample rows (5) + full rows (capped at max_full_rows)
+                        col_names  = [c.name for c in cols]
+                        col_exprs  = ", ".join(f"{table_name}.{c.name}" for c in td.columns)
+
+                        def _coerce(val: Any) -> Any:
+                            """Convert Hyper-specific types to JSON-safe primitives."""
+                            if val is None:
+                                return None
+                            t = type(val).__name__
+                            # tableauhyperapi Date / Timestamp → ISO strings
+                            if t == "Date":
+                                return f"{val.year:04d}-{val.month:02d}-{val.day:02d}"
+                            if t == "Timestamp":
+                                return (f"{val.year:04d}-{val.month:02d}-{val.day:02d}"
+                                        f"T{val.hour:02d}:{val.minute:02d}:{val.second:02d}")
+                            if t == "Interval":
+                                return str(val)
+                            return val
+
+                        def _rows_to_dicts(raw: list) -> list[dict]:
+                            return [
+                                {col_names[i]: _coerce(row[i])
+                                 for i in range(len(col_names))}
+                                for row in raw
+                            ]
+
+                        raw_samples = conn.execute_list_query(
                             f"SELECT {col_exprs} FROM {table_name} LIMIT {sample_rows}"
                         )
-                        raw_samples = conn.execute_list_query(sample_sql)
-                        samples = [
-                            {col_names[i]: (row[i] if row[i] is not None else None)
-                             for i in range(len(col_names))}
-                            for row in raw_samples
-                        ]
+                        samples = _rows_to_dicts(raw_samples)
+
+                        # Full data — no cap, pandas sandbox handles any size
+                        full_sql  = f"SELECT {col_exprs} FROM {table_name}"
+                        if max_full_rows > 0:
+                            full_sql += f" LIMIT {max_full_rows}"
+                        raw_full  = conn.execute_list_query(full_sql)
+                        full_data = _rows_to_dicts(raw_full)
 
                         # Clean table name (strip hash suffix)
                         display_name = str(table_name).strip('"').split(".")[-1]
@@ -168,6 +201,7 @@ def _read_hyper(hyper_path: str, sample_rows: int = 5) -> list[HyperTable]:
                             row_count=int(row_count),
                             columns=cols,
                             sample_rows=samples,
+                            full_rows=full_data,
                         ))
 
                     except Exception as exc:
