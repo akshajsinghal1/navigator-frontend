@@ -373,9 +373,10 @@ class PipelineRunner:
                             f"{hyper_schema.total_rows:,}", len(hyper_schema.calc_fields),
                             len(table_view_names),
                         )
-                        # Append hyper summary + field resolver to profile_text for orchestrator
-                        field_resolver = hyper_schema.field_resolver_text()
-                        profile_text   = (profile_text or "") + "\n\n" + hyper_summary + "\n" + field_resolver
+                        # Append ONLY the concise Hyper schema summary to profile_text for orchestrator
+                        # The full field resolver goes to domain agents directly (via field_resolver param)
+                        # — it's too large to include in the orchestrator's context without crowding KPI design
+                        profile_text = (profile_text or "") + "\n\n" + hyper_summary
                 except Exception as exc:
                     log.warning("Hyper extraction skipped: %s", exc)
                     hyper_schema = None
