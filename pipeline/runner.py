@@ -49,9 +49,20 @@ def _inject_supplementary_kpis(
     if not supplementary:
         return config
 
+    from pipeline.audit_config import validate_supplementary_kpi
+
     for kpi_raw in supplementary:
         target_role = kpi_raw.get("target_persona", "")
         if not target_role:
+            continue
+
+        reject_reasons = validate_supplementary_kpi(kpi_raw)
+        if reject_reasons:
+            log.warning(
+                "QA: rejected supplementary KPI %r — %s",
+                kpi_raw.get("name"),
+                "; ".join(reject_reasons),
+            )
             continue
 
         # Build a KPI object from the QA result
@@ -89,6 +100,7 @@ def _inject_supplementary_kpis(
             chart = ChartSpec(
                 type         = chart_type,
                 x_axis       = kpi_raw.get("x_axis"),
+                y_axis       = kpi_raw.get("y_axis"),
                 x_axis_type  = axis_type,
                 aggregation  = agg,
             )
@@ -239,6 +251,7 @@ class PipelineRunner:
             wb_meta       = None
             workbook_luid = None
 
+        field_resolver: dict[str, dict] = {}
         with connector as conn:
             if not offline:
                 wb_meta       = conn.get_workbook_by_content_url(workbook_content_url)
@@ -384,6 +397,7 @@ class PipelineRunner:
             # ── step 6: run orchestrator (uses same `conn` — VdsClient) ───────
             from agents.orchestrator import OrchestratorAgent
 
+            field_resolver = hyper_schema.build_field_resolver() if hyper_schema else {}
             orchestrator = OrchestratorAgent(
                 connector       = conn,
                 workbook_luid   = workbook_luid,
@@ -392,7 +406,8 @@ class PipelineRunner:
                 manifest        = manifest,
                 view_cache      = view_data_cache,
                 profile         = profile,
-                field_resolver  = hyper_schema.build_field_resolver() if hyper_schema else {},
+                field_resolver  = field_resolver,
+                hyper_schema    = hyper_schema,   # full schema for cross-table column lookup
             )
 
             log.info("Running orchestrator agent")
@@ -437,6 +452,77 @@ class PipelineRunner:
                 qa_iterations = 0
                 qa_emitted    = False
 
+        # ── step 7b: unified post-process + emit gate (all KPIs incl. QA) ───
+        normalizer_fixes: list[str] = []
+        l1_row_sources: dict[str, str] = {}
+        l1_from_sample_count = 0
+        pre_audit_summary: dict = {}
+        post_audit_summary: dict = {}
+        pruned_kpis: list[str] = []
+        try:
+            from pipeline.audit_config import audit_config, log_audit_report, save_audit_report
+            from pipeline.config_emit import (
+                count_l1_fallbacks,
+                l1_source_report,
+                post_process_config,
+            )
+
+            normalizer_fixes = post_process_config(
+                config, view_data_cache, field_resolver=field_resolver,
+            )
+            pruned_kpis = [m for m in normalizer_fixes if "rejected at emit" in m]
+            l1_row_sources = l1_source_report(config, view_data_cache)
+            l1_from_sample_count = count_l1_fallbacks(l1_row_sources)
+            if l1_from_sample_count:
+                log.warning(
+                    "L1: %d KPI(s) used 20-row sample (view cache miss) — check view_name alignment",
+                    l1_from_sample_count,
+                )
+
+            pre_report = audit_config(config, view_data_cache)
+            log_audit_report(pre_report, phase="pre-L3 audit")
+            pre_audit_summary = pre_report.summary()
+        except Exception as exc:
+            log.warning("Post-process / pre-L3 audit failed (non-fatal): %s", exc)
+
+        # ── step 8: L3 TimesFM forecasting ────────────────────────────────────
+        l3_count = 0
+        if not offline:
+            try:
+                from pipeline.l3_forecaster import run_l3_forecasts
+                l3_count = run_l3_forecasts(config, view_data_cache)
+                log.info("L3: %d KPIs got TimesFM forecasts", l3_count)
+            except Exception as exc:
+                log.warning("L3 forecasting skipped: %s", exc)
+
+        # ── step 8a: post-L3 finalize (L3 shape + labels) ─────────────────────
+        try:
+            from pipeline.config_emit import post_l3_finalize_config
+
+            post_l3_fixes = post_l3_finalize_config(
+                config, view_data_cache, field_resolver=field_resolver,
+            )
+            normalizer_fixes.extend(post_l3_fixes)
+        except Exception as exc:
+            log.warning("Post-L3 finalize failed (non-fatal): %s", exc)
+
+        # ── step 8b: post-L3 audit ───────────────────────────────────────────
+        try:
+            from pipeline.audit_config import audit_config, log_audit_report, save_audit_report
+
+            post_report = audit_config(config, view_data_cache)
+            log_audit_report(post_report, phase="post-L3 audit")
+            post_audit_summary = post_report.summary()
+            save_audit_report(
+                post_report,
+                Path("output") / "kpi_audit_report.json",
+                config_name=workbook_content_url,
+                normalizer_fixes=normalizer_fixes,
+                phase="post-L3",
+            )
+        except Exception as exc:
+            log.warning("Post-L3 KPI audit failed (non-fatal): %s", exc)
+
         # ── Collect run metrics and save alongside config ──────────────────────
         elapsed = time.time() - start
         run_metrics: dict = {
@@ -454,6 +540,13 @@ class PipelineRunner:
             "qa_iterations":                 qa_iterations,
             "personas":                      len(config.personas),
             "kpis_assembled":                sum(len(s.kpis) for pv in config.personas for s in pv.dashboard_sections),
+            "normalizer_fixes":              len(normalizer_fixes),
+            "l1_from_sample_count":          l1_from_sample_count,
+            "audit_pre_l3":                  pre_audit_summary,
+            "audit_post_l3":                 post_audit_summary,
+            "audit_pruned_kpis":             len(pruned_kpis),
+            "emit_gate_rejections":          len(pruned_kpis),
+            "l3_kpis_forecasted":            l3_count,
         }
         log.info("Run metrics: %s", run_metrics)
 

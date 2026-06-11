@@ -171,6 +171,8 @@ HEATMAP RULES — heatmap_chart needs TWO categorical (non-temporal) dimensions:
     → If x_axis is temporal, use line_chart (single series) or line_chart+breakdown_by (multi-series)
     → Temporal × categorical × measure = line_chart with breakdown_by, NOT heatmap
   ✗ NEVER heatmap_chart with breakdown_by = null — a 1-D heatmap is just a bar chart
+  ✗ If only ONE categorical dimension exists → use horizontal_bar_chart, NOT heatmap_chart
+  ✗ If the view has zero rows or only a scalar → use kpi_card or gauge_chart, NOT heatmap_chart
 
 "BY [DIMENSION]" RULE — if the KPI name says "by X":
   The phrase "by X" in the name is the user's explicit request for a breakdown.
@@ -195,37 +197,50 @@ ANTI-DEFAULTS — do NOT lazily reach for these:
   ✗ Do NOT use kpi_card when there IS a useful dimension available.
   ✗ Do NOT use table.
 
-DIVERSITY — across the full set of KPIs in a workbook, a mix of chart types is expected.
-If you find yourself picking line_chart or bar_chart for the third time in a row, stop and
-reconsider — there is almost always a more expressive chart type for at least one of them.
+SNAPSHOT vs TREND — pick the chart that matches the KPI's job (read kpi_name + description):
+  → KPI name contains "Current", "Now", "Today", or is_scalar=true on a rate/% KPI
+    → gauge_chart (preferred for %) or kpi_card — shows the headline at a glance
+  → KPI name contains "Trend", "Over Time", "Forecast", "History", "Trajectory"
+    → line_chart or area_chart (with breakdown_by for multi-series)
+  → KPI name contains "by [Entity]" with NO time dimension
+    → horizontal_bar_chart (ranking), heatmap_chart (2 cats), or stacked_bar_chart
+  → KPI name contains "Conversion", "Funnel", "Pipeline", "Stage"
+    → funnel_chart
+  → KPI name contains "Risk", "Matrix", or two categorical dimensions
+    → heatmap_chart (when x is NOT temporal)
+Do NOT default every % KPI to line_chart — a "Current Occupancy Rate" snapshot
+should be gauge_chart; "Occupancy Trend" should be line_chart. Both can exist.
 
-ADAPT TO PERSONA ROLE — use judgment, not rules:
-The `persona_role` tells you who will read this dashboard. Let it shape both
-your chart choice and your explanation style.
+DIVERSITY — this is mandatory, not optional:
+The orchestrator embeds chart_intent in kpi_description (e.g. "Chart: heatmap …").
+Honor that hint when it matches the data. Otherwise apply these rules:
+  • NEVER pick line_chart if gauge_chart, horizontal_bar_chart, heatmap_chart,
+    funnel_chart, or stacked_area_chart fits the data and KPI name better.
+  • If you would pick line_chart for the 3rd+ KPI in a row, STOP — pick a
+    different type from the 19 available types.
+  • Each persona's dashboard should use AT LEAST 4 distinct chart types across
+    its KPIs when data allows (e.g. gauge + line + horizontal_bar + heatmap).
 
-  → Executive role (CFO, VP, Director, Chief X Officer):
-    Chart: prefer simpler, immediately readable types — kpi_card, line_chart,
-    gauge_chart, bar_chart. Avoid scatter_chart or overly complex breakdowns.
-    One clear message per chart. If in doubt, simpler wins.
-    Explanation: plain business language. No field names. No jargon.
-    Lead with the business implication: "Revenue is on track" not "Sum of Sales".
-    Key insight should answer: "So what does this mean for my decisions?"
+ADAPT TO PERSONA ROLE — shapes explanation style AND acceptable complexity:
 
-  → Manager / operational role (Operations Manager, Sales Manager, Team Lead):
-    Chart: use the full range — horizontal_bar_chart for rankings, stacked for
-    breakdowns, waterfall for gaps. More complexity is fine.
-    Explanation: operational framing. "Which team / region / product to focus on?"
-    Include specific sub-segments and comparison to targets or peers.
+  → Executive (COO, CFO, VP):
+    Charts: gauge_chart and kpi_card for snapshots; line_chart/area_chart for trends;
+    horizontal_bar_chart for "top 5 at risk" rankings; donut_chart for composition.
+    Heatmaps and funnels are OK when they answer one clear question fast.
+    Avoid scatter_chart unless the correlation IS the story.
+    Explanation: plain business language. Lead with "So what for my decisions?"
 
-  → Analyst / technical role (BI Analyst, Data Scientist, Revenue Ops):
-    Chart: prefer information-dense types — scatter_chart for correlations,
-    stacked_bar_chart for multi-dimensional breakdowns, area_chart for trends.
-    Explanation: can be technical. Field names and methodology are fine.
-    Key insight can reference statistical observations or distribution patterns.
+  → Manager / operational (Coordinator, Capacity Manager, Admissions Director):
+    Charts: USE THE FULL TOOLKIT — horizontal_bar_chart, heatmap_chart, funnel_chart,
+    stacked_area_chart, waterfall_chart, stacked_bar_chart. This audience needs
+    entity-level and operational detail. line_chart alone is insufficient for them.
+    Explanation: which facility/department/shift to act on; name specific segments.
 
-This is about reading the persona role and adapting naturally — not a formula.
-A "Sales Director" is executive. A "Customer Success Manager" is managerial.
-Use common sense about who reads this and what they need.
+  → Analyst:
+    Charts: scatter_chart, bubble_chart, treemap_chart, radar_chart when data supports.
+    Explanation: can reference methodology and distributions.
+
+Use persona_role as a guide, not an excuse to always pick line_chart.
 
 Explanation principles:
 - "What" = what this KPI measures (one sentence, appropriate to persona level)
@@ -339,13 +354,17 @@ class ChartAgent(BaseAgent):
             "task": (
                 f"Select the MOST EXPRESSIVE chart type for '{kpi_name}' "
                 f"for persona '{persona_role}'. "
-                f"START with view_profile — it is verified ground truth about the data structure. "
+                f"Read kpi_description for chart_intent hints (gauge, heatmap, funnel, etc.). "
+                f"SNAPSHOT %/rate KPIs → gauge_chart; TREND KPIs → line/area; "
+                f"RANKING/BY-ENTITY → horizontal_bar or heatmap; PIPELINE → funnel. "
+                f"Do NOT default to line_chart if a more expressive type fits. "
+                f"START with view_profile — verified ground truth about data structure. "
                 f"If view_profile.is_scalar=true, use kpi_card or gauge_chart only. "
-                f"If a field has dtype='temporal', it is the x-axis of a time series, not a heatmap dimension. "
-                f"If the KPI name says 'by X', set breakdown_by to the matching entity dimension. "
-                f"Respect all quality_flags — degenerate_breakdown means do NOT use that field as breakdown_by. "
-                f"Base 'key_insight' and 'risk' on domain_agent_findings — real Tableau data. "
-                f"This KPI belongs to the '{domain}' domain. Business objective: {objective}"
+                f"If dtype='temporal', x-axis is time — not a heatmap dimension. "
+                f"If KPI name says 'by X', set breakdown_by to matching entity dimension. "
+                f"Respect quality_flags — degenerate_breakdown → do NOT use as breakdown_by. "
+                f"Base key_insight and risk on domain_agent_findings only — no fabrication. "
+                f"Domain: '{domain}'. Objective: {objective}"
             ),
         }, indent=2)
 

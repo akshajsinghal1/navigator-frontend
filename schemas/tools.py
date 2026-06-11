@@ -75,7 +75,9 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         })
                     ),
                     "description": (
-                        "KPIs Navigator has designed for this domain. "
+                        "KPIs Navigator has designed for this domain (aim for 3-5 per domain "
+                        "when data supports it). Each description should include a chart_intent "
+                        "hint (gauge, line, heatmap, horizontal_bar, funnel, etc.). "
                         "The domain agent finds the data and computes each one."
                     ),
                 },
@@ -169,15 +171,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                                     "type": "string",
                                     "enum": ["executive", "manager", "analyst"],
                                     "description": (
-                                        "Audience complexity level — determines how much detail the dashboard shows:\n"
-                                        "  executive — C-suite, VP, Director. They need: ONE screen, 4-6 KPIs max, "
-                                        "big headline numbers, minimal chart labels, no jargon. Examples: CEO, CFO, COO, "
-                                        "'VP of Sales', 'Chief Revenue Officer', 'Medical Director'.\n"
-                                        "  manager   — Dept head, operations lead, team manager. They need: comprehensive "
-                                        "view, all KPIs, full charts, breakdowns. Examples: 'Sales Operations Manager', "
-                                        "'Supply Chain Manager', 'Admissions Manager'.\n"
-                                        "  analyst   — BI analyst, data scientist, power user. They need: everything — "
-                                        "all metadata, field names, raw values, technical detail."
+                                        "Audience complexity level — determines KPI count and chart richness:\n"
+                                        "  executive — C-suite / enterprise-wide only (CEO, CFO, COO, VP). "
+                                        "6-9 KPIs: mix snapshot gauges + trend lines + risk forecasts. "
+                                        "NOT for operational Directors or Coordinators.\n"
+                                        "  manager   — Operational owners (Coordinator, Capacity Manager, "
+                                        "Admissions Director, Dept Head). 8-12 KPIs: breakdowns, rankings, "
+                                        "heatmaps, funnels, exceptions. Default when role is ambiguous.\n"
+                                        "  analyst   — BI / data power users. 10-15+ KPIs with full analytical depth."
                                     ),
                                 },
                                 "summary_cards": {
@@ -408,6 +409,33 @@ DOMAIN_TOOLS: list[dict] = [
                                     ),
                                     "oneOf": [_ARRAY(_STRING), {"type": "null"}],
                                 },
+                                "value_source": {
+                                    "type": "string",
+                                    "enum": ["direct", "tableau_formula", "agent_derived"],
+                                    "description": (
+                                        "How the 'now' headline value is obtained. "
+                                        "direct=raw column; tableau_formula=workbook calc field; "
+                                        "agent_derived=you composed a formula from 2+ fields."
+                                    ),
+                                },
+                                "l2_derived": {
+                                    "description": (
+                                        "Required when value_source=agent_derived. "
+                                        "Agent-composed deterministic KPI from 2+ input fields."
+                                    ),
+                                    "oneOf": [
+                                        _OBJECT(
+                                            {
+                                                "formula":       _STRING,
+                                                "input_fields":  _ARRAY(_STRING),
+                                                "value":         {"oneOf": [_NUMBER, {"type": "null"}]},
+                                                "unit":          {**_STRING, "description": "e.g. %, USD"},
+                                            },
+                                            required=["formula"],
+                                        ),
+                                        {"type": "null"},
+                                    ],
+                                },
                                 "l2_projection": {
                                     "description": (
                                         "How to project this KPI forward for 7D/30D forecasts. "
@@ -419,16 +447,15 @@ DOMAIN_TOOLS: list[dict] = [
                                         "               projection = same ratio, computed from value_field.\n"
                                         "  growth_rate — metrics with steady trend (customer count, market share, NPS).\n"
                                         "               projects using recent compound growth rate.\n"
-                                        "  stable      — snapshot metrics that don't project forward (avg days to ship, current rating).\n"
-                                        "               projection = current value unchanged.\n"
-                                        "Set to null if no meaningful projection is possible."
+                                        "Set l2_projection to null for snapshot/stock KPIs (beds now, gauges, categorical bars)\n"
+                                        "that have no meaningful forward projection."
                                     ),
                                     "oneOf": [
                                         _OBJECT(
                                             {
                                                 "method": {
                                                     "type": "string",
-                                                    "enum": ["daily_rate", "ratio", "growth_rate", "stable"],
+                                                    "enum": ["daily_rate", "ratio", "growth_rate"],
                                                 },
                                                 "value_field": {
                                                     **_STRING,

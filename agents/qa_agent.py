@@ -42,8 +42,9 @@ You receive:
   - The EDA analysis (all available views, dimensions, measures)
   - What views were actually used
 
-Your job is to identify the most important gaps and generate NEW KPIs
-to fill them. You have access to:
+Your job is to identify gaps in business coverage and generate NEW meaningful KPIs
+to fill them — especially missing breakdowns, unused views, and chart types not yet
+represented (heatmap, gauge, funnel, horizontal_bar). You have access to:
   - fetch_view_data: fetch actual data from any available view
   - run_analysis: run pandas on fetched data to verify values
   - emit_qa_result: submit your supplementary KPIs
@@ -52,8 +53,8 @@ IMPORTANT — efficiency rules:
   • All view data is ALREADY LOADED. You may call run_analysis directly on any
     view without fetch_view_data first. Numeric columns (incl. '%' values) are
     already coerced to numbers — do NOT strip '%' or call astype; just aggregate.
-  • Run AT MOST 3-4 run_analysis calls total, then STOP and emit. Do not keep
-    exploring view after view — pick the few highest-value gaps and move on.
+  • Run AT MOST 5-6 run_analysis calls total, then STOP and emit. Prioritize gaps
+    that add a NEW business angle or chart type, not another line-chart variant.
   • You MUST call emit_qa_result before finishing — even if you find zero gaps
     (return an empty supplementary_kpis list). Never end without emitting.
   • If you have run 4 analyses, your NEXT action must be emit_qa_result.
@@ -81,6 +82,12 @@ Gap detection checklist:
   5. SNAPSHOT vs TREND: KPIs showing point-in-time when a trend view exists
      → If "Occupancy 74.4%" exists but no "Occupancy Trend" KPI
 
+  6. CHART TYPE GAPS: dashboard is mostly line_chart but data supports richer types
+     → Unused categorical pairs → propose heatmap KPI
+     → Rate/snapshot with no gauge → propose gauge KPI
+     → Pipeline stages in data → propose funnel KPI
+     → Entity ranking possible → propose horizontal_bar KPI
+
 For each gap found:
   - Fetch the relevant view
   - Run run_analysis to verify the data has real values
@@ -96,6 +103,18 @@ Each must have a clear view_name, field_name, and verified l1_value.
 
 Quality bar: only emit KPIs you have VERIFIED with run_analysis.
 Do not propose KPIs you haven't checked against real data.
+
+REJECTION RULES — supplementary KPIs that fail these are dropped automatically:
+  • chart_type must be one of: kpi_card, line_chart, bar_chart, horizontal_bar_chart,
+    area_chart, gauge_chart, heatmap_chart, pie_chart, stacked_bar_chart, etc.
+    NEVER use "metric" or invented types.
+  • l1_value must be a real number (not null).
+  • l1_view_name and l1_field_name are required.
+  • line_chart / area_chart / trend KPIs MUST include both x_axis AND y_axis.
+  • heatmap_chart MUST include x_axis AND y_axis (second dimension).
+  • KPIs named "… by Department/Facility/Status …" MUST use horizontal_bar_chart
+    or stacked_bar — NOT kpi_card or gauge_chart.
+  • Do NOT propose a KPI if run_analysis shows zero rows or empty aggregates.
 """
 
 _QA_TOOLS = [
@@ -147,6 +166,7 @@ _QA_TOOLS = [
                             "l1_unit":         {"type": "string"},
                             "chart_type":      {"type": "string"},
                             "x_axis":          {"type": "string"},
+                            "y_axis":          {"type": "string"},
                             "x_axis_type":     {"type": "string"},
                             "aggregation":     {"type": "string", "enum": ["sum", "avg", "count", "min", "max"]},
                             "gap_filled":      {"type": "string", "description": "What gap this KPI fills"},

@@ -11,7 +11,7 @@
 //   "7d"  → FORWARD projection: where will this metric be in the next 7 days?
 //   "30d" → FORWARD projection: where will this metric be in the next 30 days?
 //
-// The projection uses l2_projection.method (ratio/stable/growth_rate/daily_rate)
+// The projection uses l2_projection.method (ratio/growth_rate/daily_rate); snapshots omit it
 // applied to current Tableau rows to extrapolate the trend forward.
 //
 // Layout:
@@ -28,8 +28,14 @@ import { useChartTheme } from "../context/ChartThemeContext";
 import { NavigatorKpiChart } from "./NavigatorKpiChart";
 import { CHART_FONT, CHART_NUM_FONT } from "./charts/chartTheme";
 import { api } from "../api/client";
-import type { NavigatorKPI, L2Projection } from "../types/navigator";
+import type { NavigatorKPI } from "../types/navigator";
 import type { Period } from "./NavigatorCanvas";
+import {
+  computeL1Value,
+  resolvePeriodHeadline,
+  l1MatchesConfig,
+} from "../lib/metricCompute";
+import { formatKpiDescription } from "../lib/kpiDisplay";
 
 // ── Module-level viewdata cache ───────────────────────────────────────────────
 // Shared across all KPI cards on the same page. Key = "workbookId::viewName".
@@ -37,6 +43,25 @@ import type { Period } from "./NavigatorCanvas";
 // Cleared automatically when the workbook changes (different workbookId).
 const _viewCache = new Map<string, Record<string, unknown>[]>();
 const _inFlight  = new Map<string, Promise<Record<string, unknown>[]>>();
+/** Workbook-level id→name maps merged from Hyper /viewdata responses. */
+const _workbookDimLabels = new Map<string, Record<string, Record<string, string>>>();
+
+export function workbookDimensionLabels(workbookId: string): Record<string, Record<string, string>> {
+  return _workbookDimLabels.get(workbookId) ?? {};
+}
+
+export function mergeWorkbookDimensionLabels(
+  workbookId: string,
+  maps: Record<string, Record<string, string>>,
+): void {
+  if (!maps || !Object.keys(maps).length) return;
+  const prev = _workbookDimLabels.get(workbookId) ?? {};
+  const merged: Record<string, Record<string, string>> = { ...prev };
+  for (const [col, labels] of Object.entries(maps)) {
+    merged[col] = { ...(prev[col] ?? {}), ...labels };
+  }
+  _workbookDimLabels.set(workbookId, merged);
+}
 
 function cachedViewData(workbookId: string, viewName: string): Promise<Record<string, unknown>[]> {
   const key = `${workbookId}::${viewName}`;
@@ -51,6 +76,9 @@ function cachedViewData(workbookId: string, viewName: string): Promise<Record<st
     .then((res) => {
       const rows = (res.rows ?? []) as Record<string, unknown>[];
       _viewCache.set(key, rows);
+      if (res.dimension_labels && Object.keys(res.dimension_labels).length) {
+        mergeWorkbookDimensionLabels(workbookId, res.dimension_labels);
+      }
       _inFlight.delete(key);
       return rows;
     })
@@ -101,172 +129,6 @@ export function parseRowDate(val: unknown): Date | null {
   // Fallback
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
-}
-
-// ── L2 Projection formula evaluator ──────────────────────────────────────────
-// Runs at display time on fresh Tableau rows using the agent-defined projection.
-
-function aggregateField(rows: Record<string, unknown>[], col: string, agg: string): number | null {
-  // COUNT: count non-null rows regardless of whether the column is numeric
-  if (agg === "count") {
-    const nonNull = rows.filter((r) => r[col] !== null && r[col] !== undefined && r[col] !== "");
-    return nonNull.length > 0 ? nonNull.length : null;
-  }
-  const vals = rows.map((r) => parseNum(r[col])).filter((v): v is number => v !== null);
-  if (!vals.length) return null;
-  switch (agg) {
-    case "avg": return vals.reduce((a, b) => a + b, 0) / vals.length;
-    default:    return vals.reduce((a, b) => a + b, 0); // sum
-  }
-}
-
-function computeDateSpanDays(rows: Record<string, unknown>[], dateCol: string): number | null {
-  const dates = rows
-    .map((r) => parseRowDate(r[dateCol]))
-    .filter((d): d is Date => d !== null)
-    .map((d) => d.getTime());
-  if (dates.length < 2) return null;
-  const min = Math.min(...dates);
-  const max = Math.max(...dates);
-  const spanDays = (max - min) / 86_400_000;
-  return spanDays > 0 ? spanDays : null;
-}
-
-function evaluateL2Projection(
-  rows: Record<string, unknown>[],
-  proj: L2Projection,
-  horizonDays: number,
-): number | null {
-  if (!rows.length) return null;
-
-  const valueCol = findColumn(rows, proj.value_field);
-  if (!valueCol) return null;
-
-  // Treat empty string date_field same as null
-  const dateColHint = proj.date_field || null;
-  const dateCol = dateColHint ? findColumn(rows, dateColHint) : null;
-
-  switch (proj.method) {
-    case "daily_rate": {
-      // total / date_span_days * horizon_days
-      const total = aggregateField(rows, valueCol, "sum");
-      if (total === null) return null;
-
-      let spanDays = dateCol ? computeDateSpanDays(rows, dateCol) : null;
-
-      // Fallback: dates couldn't be parsed (e.g. Tableau month names "January",
-      // "February" without a year). Count distinct period values and assume
-      // each is ~30 days — reasonable for any monthly/quarterly time series.
-      if (!spanDays && dateCol) {
-        const distinct = new Set(rows.map((r) => String(r[dateCol] ?? "")).filter(Boolean));
-        if (distinct.size > 0) {
-          // Estimate period length: >4 distinct → monthly (30d), ≤4 → quarterly (90d)
-          const daysPerPeriod = distinct.size > 4 ? 30 : 90;
-          spanDays = distinct.size * daysPerPeriod;
-        }
-      }
-
-      if (!spanDays) return total;
-      return (total / spanDays) * horizonDays;
-    }
-
-    case "ratio": {
-      // Ratio / percentage stays the same regardless of horizon
-      return aggregateField(rows, valueCol, proj.aggregation);
-    }
-
-    case "growth_rate": {
-      // Compound growth extrapolation from recent trend
-      if (!dateCol) return aggregateField(rows, valueCol, proj.aggregation);
-
-      // Sort rows by date and get per-period aggregates
-      const byDate = new Map<number, number[]>();
-      for (const row of rows) {
-        const d = parseRowDate(row[dateCol]);
-        const v = parseNum(row[valueCol]);
-        if (d && v !== null) {
-          const t = d.getTime();
-          if (!byDate.has(t)) byDate.set(t, []);
-          byDate.get(t)!.push(v);
-        }
-      }
-      const sorted = [...byDate.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([t, vals]) => ({ t, v: vals.reduce((a, b) => a + b, 0) }));
-
-      if (sorted.length < 2) {
-        return aggregateField(rows, valueCol, proj.aggregation);
-      }
-
-      const first = sorted[0];
-      const last  = sorted[sorted.length - 1];
-      if (!first.v) return last.v;
-
-      // Period length in days
-      const periodMs  = (last.t - first.t) / (sorted.length - 1);
-      const periodDays = periodMs / 86_400_000;
-      if (!periodDays) return last.v;
-
-      // CAGR per period
-      const growthPerPeriod = Math.pow(last.v / first.v, 1 / (sorted.length - 1)) - 1;
-      // Periods in horizon
-      const periodsAhead = horizonDays / periodDays;
-      return last.v * Math.pow(1 + growthPerPeriod, periodsAhead);
-    }
-
-    case "stable":
-    default: {
-      return aggregateField(rows, valueCol, proj.aggregation);
-    }
-  }
-}
-
-// ── Column finder (same fuzzy match as chart renderer) ────────────────────────
-
-function norm(s: string): string {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function findColumn(rows: Record<string, unknown>[], hint: string): string | null {
-  if (!rows.length || !hint) return null;
-  const cols = Object.keys(rows[0]);
-  const h = norm(hint);
-
-  const exact = cols.find((c) => norm(c) === h);
-  if (exact) return exact;
-
-  const sub = cols.find((c) => norm(c).includes(h) || h.includes(norm(c)));
-  if (sub) return sub;
-
-  const words = h.split(/\s+/).filter((w) => w.length > 2);
-  if (!words.length) return null;
-  const minMatches = Math.min(2, words.length);
-  const scored = cols.reduce<{ col: string; matches: number }[]>((acc, c) => {
-    const matches = words.filter((w) => norm(c).includes(w)).length;
-    if (matches >= minMatches) acc.push({ col: c, matches });
-    return acc;
-  }, []);
-  if (!scored.length) return null;
-  scored.sort((a, b) => b.matches - a.matches);
-  return scored[0].col;
-}
-
-// ── Numeric parser ────────────────────────────────────────────────────────────
-
-function parseNum(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "number") return v;
-  const s = String(v)
-    .replace(/[$€£¥₹₩]/g, "")
-    .replace(/,/g, "")
-    .replace(/%$/, "")
-    .trim();
-  if (s.startsWith("(") && s.endsWith(")")) {
-    const n = parseFloat(s.slice(1, -1));
-    return isNaN(n) ? null : -n;
-  }
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;
 }
 
 // ── L1 value formatter ────────────────────────────────────────────────────────
@@ -447,51 +309,22 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
   const liveL1 = useMemo<number | null>(() => {
     const configValue = typeof kpi.l1?.value === "number" ? kpi.l1.value : null;
     if (!allRows.length) return configValue;
-
-    const fieldHint = kpi.l1?.field_name;
-    if (!fieldHint) return configValue;
-
-    const col = findColumn(allRows, fieldHint);
-    if (!col) return configValue;
-
-    const agg = (kpi.chart?.aggregation ?? "sum").toLowerCase();
-    const computed = aggregateField(allRows, col, agg);
-
-    // Nothing came back (non-numeric column) → use pipeline value
+    const computed = computeL1Value(kpi, allRows);
     if (computed === null) return configValue;
-
+    if (configValue !== null && !l1MatchesConfig(computed, configValue)) return configValue;
     const unit = kpi.l1?.unit ?? "";
-
-    // Validity check 1: percentage KPI must be in [0, 100]
-    if (unit === "%" && (computed < 0 || computed > 100)) return configValue;
-
-    // Validity check 2: count aggregation on a categorical/string column produces
-    // a raw row count, not a filtered count — the agent computed it differently.
-    // Detect this: if config value is a small number but live count is >> config,
-    // the agent likely did a conditional count we can't replicate.
-    if (agg === "count" && configValue !== null) {
-      const ratio = computed / configValue;
-      // If live count is more than 3× or less than 1/3 the config value, distrust it
-      if (ratio > 3 || ratio < 0.33) return configValue;
-    }
-
+    if (unit === "%" && (computed < -100 || computed > 100)) return configValue;
     return computed;
-  }, [allRows, kpi.l1?.field_name, kpi.l1?.value, kpi.l1?.unit, kpi.chart?.aggregation]);
+  }, [allRows, kpi]);
 
-  // L2: agent-defined projection formula, evaluated for the selected horizon
-  const liveL2 = useMemo<number | null>(() => {
-    if (period === "now" || !allRows.length) return null;
-    const proj = kpi.l2_projection;
-    if (!proj) return null;
-    return evaluateL2Projection(allRows, proj, period === "7d" ? 7 : 30);
-  }, [allRows, period, kpi.l2_projection]);
+  const periodHeadline = useMemo(() => {
+    const configL1 = typeof kpi.l1?.value === "number" ? kpi.l1.value : null;
+    if (!allRows.length) return { value: configL1, layer: "L1" as const };
+    return resolvePeriodHeadline(kpi, allRows, period, configL1);
+  }, [allRows, period, kpi]);
 
-  // Chart always shows all historical rows; projection overlay handled in chart
-  const filteredRows = allRows;
-
-  // ── Headline value to display ──────────────────────────────────────────────
-  const liveValue    = period === "now" ? liveL1 : liveL2;
-  const displayValue = dataLoading ? (kpi.l1?.value ?? null) : liveValue;
+  const displayLayer: "L1" | "L2" | "L3" = periodHeadline.layer;
+  const displayValue = dataLoading ? (kpi.l1?.value ?? null) : (periodHeadline.value ?? liveL1);
   const unit         = kpi.l1?.unit ?? "";
 
   // ── RAG signal for this KPI ────────────────────────────────────────────────
@@ -525,13 +358,8 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
 
   const hasExplanation = !!(kpi.explanation?.key_insight || kpi.explanation?.risk);
 
-  // ── Layer badge — always L1 for current values, always L2 for projections ─
-  // kpi.layer from the pipeline is the OLD concept (L2 = formula-based field).
-  // With the new concept, period drives the badge: Now=L1, 7D/30D=L2.
-  const displayLayer = period === "now" ? "L1" : "L2";
-
   // ── Period badge (shown when not "now") ───────────────────────────────────
-  const periodLabel = period === "7d" ? "7D" : period === "30d" ? "30D" : null;
+  const periodLabel = period === "7d" ? "+7D" : period === "30d" ? "+30D" : null;
 
   return (
     <div style={{
@@ -601,15 +429,15 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
             flexShrink: 0,
             transition: "color 0.2s, background 0.2s, border-color 0.2s",
             color: displayLayer === "L1" ? palette.accent
-                 : displayLayer === "L2" ? palette.green
-                 : palette.red,
+                 : displayLayer === "L3" ? palette.amber ?? palette.red
+                 : palette.green,
             background: displayLayer === "L1" ? `${palette.accent}18`
-                      : displayLayer === "L2" ? `${palette.green}18`
-                      : `${palette.red}18`,
+                      : displayLayer === "L3" ? `${(palette.amber ?? palette.red)}18`
+                      : `${palette.green}18`,
             border: `1px solid ${
               displayLayer === "L1" ? `${palette.accent}40`
-            : displayLayer === "L2" ? `${palette.green}40`
-            : `${palette.red}40`}`,
+            : displayLayer === "L3" ? `${(palette.amber ?? palette.red)}40`
+            : `${palette.green}40`}`,
           }}>
             {displayLayer}
           </span>
@@ -696,7 +524,7 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
           lineHeight: 1.5,
           margin: 0,
         }}>
-          {kpi.description}
+          {formatKpiDescription(kpi.description)}
         </p>
       )}
 
@@ -705,10 +533,12 @@ export function NavigatorKpiCard({ kpi, workbookId, chartHeight = 200, period }:
         <div style={{ flex: 1, minHeight: 0 }}>
           <NavigatorKpiChart
             kpi={kpi}
-            rows={filteredRows}
+            rows={allRows}
+            overrideValue={displayValue}
             loading={dataLoading}
             period={period}
             height={chartHeight}
+            dimensionLabelMaps={workbookDimensionLabels(workbookId)}
           />
         </div>
       )}

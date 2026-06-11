@@ -36,7 +36,9 @@ from schemas.config import (
     Explanation,
     IntelligenceConfig,
     KPI,
+    KpiValueSource,
     L1Data,
+    L2Derived,
     L2Projection,
     Persona,
     PersonaView,
@@ -355,8 +357,11 @@ e.g., "Revenue Health" not "Sales Charts".
 Design as many domains as the workbook genuinely warrants — don't artificially cap.
 
 Step 3 — DESIGN KPIs PER DOMAIN  (THIS IS WHERE THE CRAFT LIVES)
-Design as many KPIs per domain as the data can genuinely support — don't cap arbitrarily.
-Richer workbooks should yield more KPIs; simpler ones fewer.
+Design GENEROUSLY — each domain should surface multiple distinct angles on the data.
+A domain with 3+ relevant views should typically yield 3-5 KPIs, not 1.
+Richer workbooks (20+ views) should produce 25-40 total KPIs across all personas
+before dedup — breadth of meaningful coverage matters more than a minimal dashboard.
+
 For each KPI:
   a. Pick a view from reachable_fields whose columns can power this KPI.
   b. Pick the EXACT column names you'll use (l1 field, x_axis, y_axis, breakdown).
@@ -369,49 +374,74 @@ For each KPI:
   e. Specify the computation hint — use EXACT 'name' values from reachable_fields
      when referencing columns (e.g. "sum of 'Sales' where 'Region'='West'", not
      "sum of sales where region is West").
+  f. In the description, add a chart_intent hint for the chart agent, e.g.:
+     "Chart: gauge — current occupancy snapshot vs capacity"
+     "Chart: line — occupancy trend over time with forecast band"
+     "Chart: heatmap — staffing gap by department × shift"
+     "Chart: horizontal_bar — facilities ranked by risk score"
+     "Chart: funnel — referral conversion stages"
+     This steers visualization diversity — do NOT default every KPI to line_chart.
 
-ADAPT KPI DEPTH TO PERSONA ROLE — this is not a fixed rule, use your judgment:
-The persona's role naturally signals what kind of intelligence they need.
-  → A CFO, VP, or Director cares about the headline: is the business healthy?
-    Design fewer KPIs (4-6), high business impact, simple framing.
-    KPI names should be questions an executive asks in a board meeting.
-    Focus on outcomes (revenue, margin, risk) not operational mechanics.
-  → A Manager or Operations lead cares about levers they can pull:
-    Design more KPIs (6-10), operational coverage, team and process metrics.
-    Include breakdowns, efficiency ratios, and performance against targets.
-  → An Analyst or technical persona cares about the full picture:
-    Design comprehensive KPIs including derived ratios, correlations, distributions.
-    More KPIs are fine, include technical metrics and multi-dimensional analysis.
+INTELLIGENCE BREADTH — cover the full business story (use every angle the data allows):
+Across the FULL workbook (all personas combined), aim to include KPIs from EACH
+category below when the data supports it — not all on one persona, but somewhere:
+  1. CURRENT STATE — snapshot headline (occupancy now, beds available, escalations open)
+  2. TREND — how is it moving over time? (weekly/monthly trajectory)
+  3. FORECAST / RISK — what is predicted next? confidence bands, risk flags
+  4. BREAKDOWN BY ENTITY — facility, department, shift, region (who/where is the problem?)
+  5. EFFICIENCY / RATIO — rates, conversion %, utilization, turnaround time
+  6. COMPOSITION — mix changing over time (status mix, agency vs internal staffing)
+  7. RANKING / EXCEPTION — top/bottom performers, departments above threshold
+  8. PIPELINE / FUNNEL — stages with drop-off (referral → admit, etc.)
+If a category is missing entirely, that is a design gap — add a KPI before emitting.
 
-This is about what the DATA and ROLE together suggest — not a rigid formula.
-A CFO with rich financial data might still warrant 8 KPIs. An analyst with
-limited data might only support 4. Let context drive the judgment.
+ADAPT KPI DEPTH TO PERSONA ROLE — targets are MINIMUMS for rich workbooks, not caps:
+  → executive (C-suite, COO, CFO, VP):
+    6-9 KPIs per persona — focused but COMPREHENSIVE on outcomes they own.
+    Mix snapshot gauges/cards WITH trend KPIs — executives need both "where are we"
+    and "where are we heading". Not just 4 headline numbers.
+  → manager (Coordinator, Operations Manager, Capacity Manager, Team Lead):
+    8-12 KPIs per persona — operational levers, breakdowns, rankings, exceptions.
+    This is where heatmaps, horizontal bars, funnels, and stacked charts shine.
+  → analyst (BI Analyst, Data Scientist):
+    10-15+ KPIs — correlations, distributions, multi-dimensional analysis.
 
-QUALITY GATE — before emitting, ask yourself for each KPI:
+Persona level assignment — be precise, do NOT over-classify as executive:
+  • "Coordinator", "Manager", "Lead", "Supervisor" → manager (even if they report up)
+  • "Director" / "Head of" in an OPERATIONAL function (Admissions Director,
+    Capacity Manager) → manager unless they are clearly C-suite
+  • Only true C-suite / enterprise-wide roles → executive
+
+QUALITY GATE — meaningful AND distinct (not minimal):
   - Could a non-analyst tell this apart from the workbook's existing view? If "no"
     you've been lazy. Redesign.
-  - Would TWO different personas frame this KPI differently? If you can't think
-    of how, the KPI is too thin. Add a slice/ratio/framing.
+  - Does this KPI answer a DIFFERENT business question from your other KPIs?
+    Same field + different chart angle (snapshot gauge vs trend line) = OK.
+    Same field + same question + same framing = dedup candidate.
   - Does the KPI's NAME read like a metric or a question? Prefer questions.
+  - Would removing this KPI leave a blind spot in the business story? If yes, keep it.
 
 Step 4 — IDENTIFY PERSONAS + CLASSIFY LEVEL
 Real decision-makers (CFO, Ops Manager, Field Rep, etc.) — not generic labels.
 Each persona's dashboard MUST contain a DIFFERENT SET of KPIs — no kpi_id may
 appear in more than one persona. Think of it as assigning ownership:
 
-CRITICAL — set persona_level for every persona:
-  "executive" → C-suite, VP, Director, Chief X Officer, Medical Director
-                They see ONE screen, 4-6 KPIs, big numbers, no jargon.
-                Examples: CEO, CFO, COO, "VP of Sales", "Chief Revenue Officer"
-  "manager"   → Department head, operations lead, team manager
-                They see comprehensive dashboards with all KPIs and breakdowns.
-                Examples: "Sales Operations Manager", "Supply Chain Manager"
-  "analyst"   → BI analyst, data scientist, power user
-                They see everything — all metadata and technical detail.
-                Examples: "BI Analyst", "Data Scientist", "Revenue Operations Analyst"
+CRITICAL — set persona_level for every persona (you MUST set this explicitly):
+  "executive" → C-suite and enterprise-wide decision-makers ONLY.
+                6-9 KPIs: outcomes, risk, forecast + current state. Examples:
+                CEO, CFO, COO, "Chief Medical Officer", "VP of Operations"
+  "manager"   → Operational owners who need levers and breakdowns.
+                8-12 KPIs: rankings, entity slices, efficiency, exceptions. Examples:
+                "Capacity Manager", "Staffing Coordinator", "Admissions Director",
+                "Supply Chain Manager", "Department Head"
+  "analyst"   → BI / data power users who want the full analytical picture.
+                10-15+ KPIs. Examples: "BI Analyst", "Data Scientist"
 
-When in doubt: if the role has "VP", "Chief", "Director", "Head of" → executive.
-If it has "Manager", "Lead", "Coordinator" → manager. If "Analyst", "Scientist" → analyst.
+Classification guide:
+  • "Coordinator", "Manager", "Lead", "Supervisor" → always manager
+  • "Director" / "Head of" in a single department or function → manager
+  • "VP", "Chief", "C-suite", COO/CFO/CEO → executive
+  • Default when unclear → manager (most roles are operational, not C-suite)
   - CFO owns the financial health KPIs
   - Ops Manager owns throughput + delay KPIs
   - Sales Manager owns quota + pipeline KPIs
@@ -463,14 +493,14 @@ Rules
   NEVER create a persona whose KPIs are only confidence bounds — that is a junk persona.
   Count these bound views as "used" via their parent forecast KPI for coverage purposes.
 
-- DEDUPLICATION — before emitting, scan your KPI list for near-duplicate metrics. Two KPIs
-  measuring the same underlying fact are near-duplicates even if named differently:
-  e.g. "Predicted Staffing Shortage" (-0.7) and "Predicted Shortage Absolute" (0.7) are the
-  same metric — one is just abs() of the other. Keep only the richer version (the one with a
-  chart or breakdown). Other near-duplicate patterns to eliminate: "Total Revenue" + "Revenue
-  Sum", "Avg Bed Occupancy" + "Mean Occupancy Rate", "Count of Referrals" + "Referral Volume".
-  If you find a near-duplicate pair, drop the weaker one entirely. Never surface the same
-  business fact twice with slightly different math or naming.
+- DEDUPLICATION — drop ONLY true duplicates, not different angles on the same topic:
+  DROP: identical math on identical field ("Total Referrals" + "Referral Volume",
+        abs() variant of same metric, sum vs sum with no framing difference).
+  KEEP: same underlying field with DIFFERENT business question or visualization:
+        "Current Occupancy Rate" (gauge snapshot) + "Occupancy Trend" (line over time) ✓
+        "Staffing Gap by Department" (horizontal_bar) + "Predicted Staffing Shortage" (forecast line) ✓
+        "Referrals by Status" (stacked_area) + "Referral Conversion Rate" (efficiency ratio) ✓
+  When in doubt, KEEP both — a rich dashboard is better than an under-designed one.
 
 - Every KPI must appear in EXACTLY ONE persona's dashboard. No kpi_id may be listed
   in multiple personas' dashboard_sections. The assembler enforces this — duplicates
@@ -520,10 +550,11 @@ class OrchestratorAgent(BaseAgent):
         workbook_luid: str,
         workbook_meta: dict[str, Any],
         available_views: list[str] | None = None,
-        manifest = None,   # pipeline.manifest.WorkbookManifest | None
+        manifest = None,        # pipeline.manifest.WorkbookManifest | None
         view_cache: dict[str, list[dict]] | None = None,
-        profile = None,    # pipeline.profiler.WorkbookProfile | None
-        field_resolver: dict[str, dict] | None = None,  # field → Hyper source mapping
+        profile = None,         # pipeline.profiler.WorkbookProfile | None
+        field_resolver: dict[str, dict] | None = None,   # field → Hyper source mapping
+        hyper_schema = None,    # pipeline.hyper_extractor.HyperSchema | None
     ) -> None:
         super().__init__(
             model          = _MODEL,
@@ -540,6 +571,7 @@ class OrchestratorAgent(BaseAgent):
         self._view_cache      = view_cache or {}
         self._profile         = profile           # WorkbookProfile — source for ViewProfile slices
         self._field_resolver  = field_resolver or {}  # field → Hyper source mapping
+        self._hyper_schema    = hyper_schema       # HyperSchema — for cross-table column lookup
 
         # ── Run metrics: accumulated throughout the pipeline, saved at the end ──
         self._run_metrics: dict[str, Any] = {}
@@ -675,15 +707,25 @@ class OrchestratorAgent(BaseAgent):
                     "Run as many Phase-A analyze_domain turns as needed to achieve full coverage. "
                     "Do not compress all views into a single batch — group by business topic."
                 ),
+                "kpi_volume_targets": (
+                    f"This workbook has {n_views} views — design generously. "
+                    "Aim for 25-40 total KPIs across all personas for 20+ views; "
+                    "3-5 KPIs per domain; 6-12 KPIs per persona depending on level. "
+                    "Cover all 8 intelligence categories (snapshot, trend, forecast, breakdown, "
+                    "ratio, composition, ranking, pipeline) where data allows. "
+                    "Include chart_intent hints (gauge, heatmap, funnel, horizontal_bar, etc.) "
+                    "in each KPI description — avoid designing everything as a line chart."
+                ),
             },
             "task": (
                 "Analyze this Tableau workbook. The VERIFIED_DATA_PROFILE is computed ground "
                 "truth — design from it, and OBEY its MANDATORY DATA-QUALITY RULES exactly "
-                "(scalar views -> kpi_card; never break a measure down by a degenerate dimension; "
+                "(scalar views -> kpi_card/gauge; never break a measure down by a degenerate dimension; "
                 "never headline a near-uniform segment; use canonical labels; use EXACT column names). "
-                "Identify the single business objective and design intelligence that covers every "
-                "available view — as many domains/personas as the data warrants, across as many "
-                "Phase-A analyze_domain turns as needed, then chart specs (Phase B), then emit (Phase C). "
+                "Identify the single business objective and design RICH, MULTI-ANGLE intelligence: "
+                "many meaningful KPIs per domain, broad business coverage, diverse chart intents, "
+                "as many domains/personas as the data warrants. Use all Phase-A turns needed for "
+                "full view coverage, then chart specs (Phase B), then emit (Phase C). "
                 "Use EXACT column names from the profile / reachable_fields — never invent or reformat them."
             ),
         }, indent=2, default=_json_default)
@@ -774,20 +816,32 @@ class OrchestratorAgent(BaseAgent):
 
         log.info("Spinning up chart agent for KPI: %s", kpi_name)
 
-        # ── Compute reachable_fields_in_view from manifest ────────────────────
-        # If the KPI's l1_view_name maps to a view we've probed, expose THAT
-        # view's exact CSV column list to the chart agent so it picks axes
-        # from real names — never a metadata guess. Case-insensitive match
-        # protects against the agent paraphrasing the view name slightly.
+        # ── Compute reachable_fields_in_view from manifest / HyperSchema ─────
+        # Priority:
+        #   1. [TABLE] views  → use HyperSchema (exact Hyper column names, no display-name drift)
+        #   2. Tableau views  → use manifest CSV probe (real column headers from the live view)
+        #   3. Fallback       → whatever the orchestrator agent already listed
+        # This ensures ChartAgent always sees the exact column names that will
+        # appear in the data at render time — preventing "Facility Name" vs
+        # "facility_id" mismatches that silently break breakdown charts.
         view_name      = inp.get("l1_view_name", "")
         view_name_norm = view_name.strip().lower()
         reachable_columns: list[str] = []
-        if self._manifest is not None and view_name_norm:
+
+        # 1. [TABLE] source → real Hyper column names (authoritative)
+        hyper_cols = self._hyper_cols_for_view(view_name, self._hyper_schema, self._field_resolver)
+        if hyper_cols:
+            reachable_columns = hyper_cols
+            log.debug("ChartAgent reachable_columns from HyperSchema for '%s': %s", view_name, hyper_cols)
+
+        # 2. Tableau view → manifest CSV probe
+        if not reachable_columns and self._manifest is not None and view_name_norm:
             for v in self._manifest.views:
                 if (v.name or "").strip().lower() == view_name_norm and v.columns:
                     reachable_columns = list(v.columns)
                     break
-        # Fall back to whatever the agent already learned, but prefer manifest
+
+        # 3. Fallback to whatever the orchestrator agent already learned
         if not reachable_columns:
             reachable_columns = list(inp.get("available_dimensions", []))
 
@@ -863,6 +917,164 @@ class OrchestratorAgent(BaseAgent):
         for p in inp.get("personas", []):
             log.info("  Persona '%s': %d sections", p.get("role"), len(p.get("dashboard_sections", [])))
         return {"status": "ok", "personas": persona_count}
+
+    # ── axis / dimension column resolver ─────────────────────────────────────
+
+    @staticmethod
+    def _resolve_col(name: str | None, actual_cols: list[str]) -> str | None:
+        """
+        Fuzzy-match `name` against `actual_cols`.
+        Used for x_axis, y_axis, breakdown_by, color_by, sort_by so that
+        Tableau display names ("Facility Name") resolve to Hyper column names
+        ("facility_id") when they are the closest match.
+
+        Priority: exact → normalised-exact → substring → None.
+        """
+        if not name or not actual_cols:
+            return None
+        if name in actual_cols:
+            return name
+        import re
+        def _n(s: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", s.lower())
+        target = _n(name)
+        # Normalised exact
+        for c in actual_cols:
+            if _n(c) == target:
+                return c
+        # Substring
+        for c in actual_cols:
+            nc = _n(c)
+            if target and (target in nc or nc in target):
+                return c
+        return None
+
+    @staticmethod
+    def _hyper_cols_for_view(
+        view_name: str,
+        hyper_schema: Any = None,
+        field_resolver: dict | None = None,
+    ) -> list[str]:
+        """
+        Return the actual column names for a [TABLE] view.
+        Returns [] when view_name is not a [TABLE] source or no schema is available.
+        Generic — works for any workbook.
+
+        Priority:
+          1. HyperSchema.tables — full column metadata including order
+          2. field_resolver     — available when HyperSchema wasn't passed in
+        """
+        if not view_name or not view_name.startswith("[TABLE]"):
+            return []
+        table_name = view_name.replace("[TABLE]", "").strip().strip('"').lower()
+
+        # 1. Prefer HyperSchema — complete and ordered
+        if hyper_schema is not None:
+            for table in hyper_schema.tables:
+                if table.table_name.lower() == table_name:
+                    return [col.name for col in table.columns]
+
+        # 2. Fall back to field_resolver (always available from runner)
+        if field_resolver:
+            cols = [
+                info.get("column", name)
+                for name, info in field_resolver.items()
+                if info.get("source") == "direct"
+                and info.get("table", "").lower() == table_name
+            ]
+            if cols:
+                return cols
+
+        return []
+
+    @staticmethod
+    def _build_breakdown_labels(
+        breakdown_col: str,
+        raw_rows: list[dict],
+        hyper_schema: Any,
+    ) -> dict[str, str] | None:
+        """
+        Auto-generate breakdown_labels when breakdown_by is a numeric ID column.
+
+        Strategy (generic — no hardcoded names):
+          1. Check if all values in breakdown_col are numeric integers.
+          2. Look for a companion name column in the SAME raw_data rows
+             (pattern: foo_id → foo_name, e.g. facility_id → facility_name).
+          3. If not found, scan all Hyper tables for one that has both the ID
+             column and a name column and build the mapping from sample_rows.
+
+        Returns a dict {"1": "Central Care", "2": "North Campus", ...} or None.
+        """
+        if not breakdown_col or not raw_rows:
+            return None
+
+        # Check if values are numeric integers
+        sample_vals = [row.get(breakdown_col) for row in raw_rows[:50] if row.get(breakdown_col) is not None]
+        if not sample_vals:
+            return None
+        all_numeric = all(
+            isinstance(v, int) or
+            (isinstance(v, float) and v == int(v)) or
+            (isinstance(v, str) and v.strip().lstrip("-").isdigit())
+            for v in sample_vals
+        )
+        if not all_numeric:
+            return None  # not a numeric ID column — labels not needed
+
+        def _str_id(v: Any) -> str:
+            """Normalize numeric ID to string key."""
+            try:
+                return str(int(float(v)))
+            except (ValueError, TypeError):
+                return str(v)
+
+        # Helper: try to build labels from (id_col, name_col) pairs in rows
+        def _labels_from_rows(rows: list[dict], id_col: str, name_col: str) -> dict[str, str]:
+            labels: dict[str, str] = {}
+            for row in rows:
+                id_v   = row.get(id_col)
+                name_v = row.get(name_col)
+                if id_v is not None and name_v is not None:
+                    labels[_str_id(id_v)] = str(name_v)
+            return labels
+
+        # Candidate name columns: strip trailing _id and try _name variants
+        import re
+        base = re.sub(r"_id$", "", breakdown_col, flags=re.IGNORECASE)
+        name_candidates = [
+            f"{base}_name",
+            f"{base}name",
+            f"{base} name",
+        ]
+
+        # 1. Same-row lookup (name column in the same table)
+        row_cols = list(raw_rows[0].keys()) if raw_rows else []
+        row_cols_norm = {c.lower().replace(" ", "_"): c for c in row_cols}
+        for candidate in name_candidates:
+            real_col = row_cols_norm.get(candidate.lower().replace(" ", "_"))
+            if real_col:
+                labels = _labels_from_rows(raw_rows, breakdown_col, real_col)
+                if labels:
+                    return labels
+
+        # 2. Cross-table lookup in HyperSchema sample_rows
+        if hyper_schema is None:
+            return None
+        bc_norm = breakdown_col.lower().replace(" ", "_")
+        for table in hyper_schema.tables:
+            t_cols = {col.name.lower().replace(" ", "_"): col.name for col in table.columns}
+            if bc_norm not in t_cols:
+                continue  # table doesn't have the ID column
+            for candidate in name_candidates:
+                real_name_col = t_cols.get(candidate.lower().replace(" ", "_"))
+                if real_name_col:
+                    id_col_real = t_cols[bc_norm]
+                    rows = table.full_rows if table.full_rows else table.sample_rows
+                    labels = _labels_from_rows(rows, id_col_real, real_name_col)
+                    if labels:
+                        return labels
+
+        return None
 
     # ── axis normalisation (post-agent validation) ───────────────────────────
 
@@ -1019,9 +1231,25 @@ class OrchestratorAgent(BaseAgent):
                 # L2 (deterministic — Tableau formula evaluation)
                 l2 = evaluate_l2(kpi_raw, filtered_inventory)
 
+                # Value provenance + agent-derived L2
+                value_source: KpiValueSource = kpi_raw.get("value_source") or "direct"
+                if value_source not in ("direct", "tableau_formula", "agent_derived"):
+                    value_source = "direct"
+                l2_derived: L2Derived | None = None
+                l2_derived_raw = kpi_raw.get("l2_derived")
+                if l2_derived_raw and isinstance(l2_derived_raw, dict) and l2_derived_raw.get("formula"):
+                    try:
+                        l2_derived = L2Derived(**l2_derived_raw)
+                        value_source = "agent_derived"
+                    except Exception as exc:
+                        log.warning("Invalid l2_derived for KPI '%s': %s", kpi_id, exc)
+
                 # L2 Projection — agent-defined method for 7D/30D forecasts
                 l2_proj_raw = kpi_raw.get("l2_projection")
                 l2_projection: L2Projection | None = None
+                if l2_proj_raw and isinstance(l2_proj_raw, dict):
+                    if l2_proj_raw.get("method") == "stable":
+                        l2_proj_raw = None
                 if l2_proj_raw and isinstance(l2_proj_raw, dict):
                     try:
                         l2_projection = L2Projection(**l2_proj_raw)
@@ -1036,10 +1264,16 @@ class OrchestratorAgent(BaseAgent):
                     aggregation = "avg" if kpi_unit in ("%", "score", "days", "hours") else "sum"
 
                 # ── VALIDATION: ensure chart axes match REAL columns in raw_data ──
-                # Catches the case where the chart agent guessed names like 'Year'
-                # that don't exist in the actual fetched CSV.
+                # For [TABLE] views, use the Hyper schema as the authoritative
+                # column list — raw_data may only have 20 rows and might have
+                # been fetched via a Tableau view with different display names.
                 raw_rows = kpi_raw.get("raw_data") or []
-                actual_cols = list(raw_rows[0].keys()) if raw_rows else []
+                l1_view  = kpi_raw.get("l1_view_name", "")
+                hyper_actual = self._hyper_cols_for_view(l1_view, self._hyper_schema, self._field_resolver)
+                actual_cols  = hyper_actual if hyper_actual else (
+                    list(raw_rows[0].keys()) if raw_rows else []
+                )
+
                 x_axis_resolved, y_axis_resolved = self._normalise_chart_axes(
                     spec_x      = spec.get("x_axis"),
                     spec_y      = spec.get("y_axis"),
@@ -1048,18 +1282,35 @@ class OrchestratorAgent(BaseAgent):
                     chart_type  = chart_type,
                 )
 
+                # Resolve breakdown/color/sort with fuzzy matching so Tableau
+                # display names ("Facility Name") map to Hyper columns
+                # ("facility_id") rather than being silently dropped.
+                breakdown_resolved = self._resolve_col(spec.get("breakdown_by"), actual_cols)
+                color_resolved     = self._resolve_col(spec.get("color_by"),     actual_cols)
+                sort_resolved      = self._resolve_col(spec.get("sort_by"),      actual_cols)
+
+                # Auto-generate breakdown_labels when breakdown is a numeric ID
+                # column and a companion name column exists in the same or a
+                # related Hyper table.  Generic — no hardcoded field names.
+                breakdown_labels = self._build_breakdown_labels(
+                    breakdown_col = breakdown_resolved or "",
+                    raw_rows      = raw_rows,
+                    hyper_schema  = self._hyper_schema,
+                ) if breakdown_resolved else None
+
                 chart = ChartSpec(
-                    type         = chart_type,
-                    x_axis       = x_axis_resolved,
-                    y_axis       = y_axis_resolved,
-                    x_axis_type  = spec.get("x_axis_type"),
-                    aggregation  = aggregation,
-                    sort_order   = spec.get("sort_order"),
-                    breakdown_by = spec.get("breakdown_by") if spec.get("breakdown_by") in actual_cols else None,
-                    color_by     = spec.get("color_by")     if spec.get("color_by")     in actual_cols else None,
-                    sort_by      = spec.get("sort_by")      if spec.get("sort_by")      in actual_cols else None,
-                    filters      = spec.get("filters", []),
-                    notes        = spec.get("chart_notes"),
+                    type             = chart_type,
+                    x_axis           = x_axis_resolved,
+                    y_axis           = y_axis_resolved,
+                    x_axis_type      = spec.get("x_axis_type"),
+                    aggregation      = aggregation,
+                    sort_order       = spec.get("sort_order"),
+                    breakdown_by     = breakdown_resolved,
+                    breakdown_labels = breakdown_labels,
+                    color_by         = color_resolved,
+                    sort_by          = sort_resolved,
+                    filters          = spec.get("filters", []),
+                    notes            = spec.get("chart_notes"),
                 )
 
                 # Explanation — enrich risk + key_insight with sub-segment and driver data
@@ -1093,6 +1344,8 @@ class OrchestratorAgent(BaseAgent):
                     name            = kpi_raw["name"],
                     description     = kpi_raw.get("description", ""),
                     layer           = kpi_raw.get("layer", "L1"),
+                    value_source    = value_source,
+                    l2_derived      = l2_derived,
                     priority        = int(kpi_raw.get("priority", 50)),
                     l1              = l1,
                     l2              = l2,

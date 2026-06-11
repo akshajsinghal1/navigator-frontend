@@ -67,7 +67,7 @@ class TableauConnector:
                 self._server.auth.sign_out()
                 log.info("Signed out of Tableau")
             except Exception as exc:
-                log.warning("Sign-out error (ignored): %s", exc)
+                log.debug("Sign-out error (ignored): %s", exc)
             finally:
                 self._server = None
 

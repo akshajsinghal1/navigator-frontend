@@ -15,7 +15,8 @@
 
 import { useEffect, useCallback, useState } from "react";
 import { ChartThemeProvider } from "./context/ChartThemeContext";
-import { NavigatorCanvas } from "./components/NavigatorCanvas";
+import { NavigatorCanvas, clearRowCache } from "./components/NavigatorCanvas";
+import { mergeWorkbookDimensionLabels } from "./components/NavigatorKpiCard";
 import { useChartTheme } from "./context/ChartThemeContext";
 import { api } from "./api/client";
 import { CHART_FONT, CHART_NUM_FONT } from "./components/charts/chartTheme";
@@ -42,6 +43,15 @@ function toCompanyId(workbookId: string): string {
     .replace(/^_+|_+$/g, "") || "company";
 }
 
+/** Pinned demo config alias — charts still fetch live data from the real workbook. */
+function isDemoConfigAlias(workbookId: string): boolean {
+  const k = workbookId.toLowerCase().replace(/-/g, "_");
+  return k === "navigator_demo" || k === "demo";
+}
+
+/** Tableau content URL inside the pinned demo config (Hyper / viewdata target). */
+const DEMO_DATA_WORKBOOK = "Navigator_Predictive_Analytics_v2_Extract";
+
 // ── Inner app (inside ChartThemeProvider) ─────────────────────────────────────
 
 interface NavigatorInnerProps {
@@ -57,6 +67,9 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
   const [config, setConfig]     = useState<NavigatorConfig | null>(null);
   const [error, setError]       = useState<string | null>(null);
   const [personaIdx, setPersonaIdx] = useState(0);
+  const dataWorkbookId = isDemoConfigAlias(workbookId)
+    ? (config?.workbook?.name ?? DEMO_DATA_WORKBOOK)
+    : workbookId;
   // Derive loading: true only while neither config nor error is available yet
   const loading = config === null && error === null;
 
@@ -94,6 +107,13 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
       .then((cfg) => {
         setConfig(cfg);
         setPersonaIdx(0);
+        const demoLabels = cfg.demo?.facility_labels;
+        if (demoLabels && Object.keys(demoLabels).length) {
+          const dataWb = isDemoConfigAlias(workbookId)
+            ? (cfg.workbook?.name ?? DEMO_DATA_WORKBOOK)
+            : workbookId;
+          mergeWorkbookDimensionLabels(dataWb, { facility_id: demoLabels });
+        }
       })
       .catch((err) => setError(String(err)));
   }, [workbookId]);
@@ -109,14 +129,24 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
   useEffect(() => {
     if (!dataUpdated) return;
     clearDataUpdated(); // eslint-disable-line react-doctor/no-pass-data-to-parent
-    // Re-fetch without showing the full-screen spinner (no config=null reset)
+    // Tableau data changed — expire the frontend row cache so tiles re-fetch
+    // fresh Hyper rows instead of serving the now-stale in-memory copy.
+    clearRowCache(dataWorkbookId);
+    // Re-fetch config without showing the full-screen spinner (no config=null reset)
     api.intelligenceConfig(workbookId)
       .then((cfg) => {
         setConfig(cfg);
+        const demoLabels = cfg.demo?.facility_labels;
+        if (demoLabels && Object.keys(demoLabels).length) {
+          const dataWb = isDemoConfigAlias(workbookId)
+            ? (cfg.workbook?.name ?? DEMO_DATA_WORKBOOK)
+            : workbookId;
+          mergeWorkbookDimensionLabels(dataWb, { facility_id: demoLabels });
+        }
         // Keep personaIdx where the user is — don't reset to 0
       })
       .catch(() => { /* silently ignore — user keeps stale view */ });
-  }, [dataUpdated, workbookId, clearDataUpdated]);
+  }, [dataUpdated, workbookId, dataWorkbookId, clearDataUpdated]);
 
   const activePersona: NavigatorPersona | null = config?.personas?.[personaIdx] ?? null;
 
@@ -151,18 +181,41 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
         <span style={{ fontFamily: CHART_FONT, fontSize: 14, color: palette.red, textAlign: "center" }}>
           {error ?? "Intelligence Config not found"}
         </span>
-        <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink3, textAlign: "center" }}>
-          Run the pipeline first:{" "}
-          <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
-            python run_pipeline.py --workbook {workbookId}
-          </code>
-        </span>
-        <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4, textAlign: "center" }}>
-          Then restart the API:{" "}
-          <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
-            uvicorn api.main:app --reload --port 8000
-          </code>
-        </span>
+        {isDemoConfigAlias(workbookId) ? (
+          <>
+            <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink3, textAlign: "center" }}>
+              Start the API (keep this terminal open):{" "}
+              <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
+                python -m uvicorn api.main:app --port 8002
+              </code>
+            </span>
+            <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4, textAlign: "center" }}>
+              Then restart Vite:{" "}
+              <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
+                cd frontend && npm run dev
+              </code>
+              {" "}→ open{" "}
+              <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
+                /?workbook=NAVIGATOR_DEMO
+              </code>
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink3, textAlign: "center" }}>
+              Run the pipeline first:{" "}
+              <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
+                python run_pipeline.py --workbook {workbookId}
+              </code>
+            </span>
+            <span style={{ fontFamily: CHART_NUM_FONT, fontSize: 12, color: palette.ink4, textAlign: "center" }}>
+              Then start the API:{" "}
+              <code style={{ background: palette.bg2, padding: "2px 6px", borderRadius: 3 }}>
+                python -m uvicorn api.main:app --port 8002
+              </code>
+            </span>
+          </>
+        )}
       </div>
     );
   }
@@ -224,7 +277,7 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
 
   // ── Main UI ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: palette.bg, display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100vh", background: palette.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
       {/* ── Header ── */}
       <header style={headerStyle}>
@@ -340,13 +393,15 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
       {/* Focus areas removed — they're visible in the persona tab subtitle */}
 
       {/* ── Canvas ── */}
-      <main style={{ flex: 1, padding: "16px 40px 32px" }}>
+      <main style={{ flex: 1, minHeight: 0, padding: "10px 24px 12px", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {activePersona && (
-          <NavigatorCanvas
-            key={activePersona.persona.role}
-            persona={activePersona}
-            workbookId={workbookId}
-          />
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <NavigatorCanvas
+              key={activePersona.persona.role}
+              persona={activePersona}
+              workbookId={dataWorkbookId}
+            />
+          </div>
         )}
       </main>
 

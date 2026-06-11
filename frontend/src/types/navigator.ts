@@ -35,13 +35,23 @@ export interface NavigatorL2 {
 
 // ── L2 Projection — agent-defined formula for 7D/30D forward projections ─────
 // Evaluated by the frontend on fresh Tableau rows at display time.
-export type L2Method = "daily_rate" | "ratio" | "growth_rate" | "stable";
+export type L2Method = "daily_rate" | "ratio" | "growth_rate";
 
 export interface L2Projection {
   method:      L2Method;
   value_field: string;          // exact column name for the metric value
   aggregation: "sum" | "avg" | "count";
   date_field:  string | null;   // date/time column (required for daily_rate, growth_rate)
+}
+
+export type KpiValueSource = "direct" | "tableau_formula" | "agent_derived";
+export type ForecastLayer = "l2_projection" | "l3";
+
+export interface L2Derived {
+  formula:       string;
+  input_fields?: string[];
+  value?:        number | null;
+  unit?:         string | null;
 }
 
 export interface NavigatorChart {
@@ -51,11 +61,21 @@ export interface NavigatorChart {
   x_axis_type:   string | null;   // "temporal" | "categorical" | "numeric"
   aggregation:   string;           // "sum" | "avg" | "count" | "min" | "max"
   sort_order:    string | null;   // "asc" | "desc" | "none"
-  breakdown_by?: string | null;
-  color_by?:     string | null;
-  sort_by?:      string | null;
-  filters?:      unknown[];
-  notes?:        string | null;
+  breakdown_by?:     string | null;
+  breakdown_labels?: Record<string, string> | null;  // maps raw breakdown key → display label
+  color_by?:         string | null;
+  sort_by?:          string | null;
+  filters?:          unknown[];
+  notes?:            string | null;
+}
+
+export interface L3Forecast {
+  model:        string;
+  horizon_days: number;
+  predictions:  number[];   // point forecast per future day
+  lower_p10:    number[];   // 10th percentile
+  upper_p90:    number[];   // 90th percentile
+  generated_at: string;
 }
 
 export interface NavigatorKPI {
@@ -63,7 +83,12 @@ export interface NavigatorKPI {
   name:             string;
   description:      string;
   layer?:           "L1" | "L2" | "L3";
+  value_source?:    KpiValueSource;
+  l2_derived?:      L2Derived | null;
+  forecast_layers?: ForecastLayer[];
   priority?:        number;   // 0-100 relevancy score assigned by domain agent
+  l3_forecast?:            L3Forecast;
+  l3_forecast_by_series?:  Record<string, L3Forecast>;
   l1:               NavigatorL1;
   trend_direction:  "up" | "down" | "flat" | null;
   trend_pct:        number | null;
@@ -132,6 +157,11 @@ export interface NavigatorConfig {
   version:      string;
   generated_at: string;
   refreshed_at?: string;
+  /** Present on pinned demo snapshots — facility_id → display name. */
+  demo?: {
+    snapshot?:        string;
+    facility_labels?:   Record<string, string>;
+  };
 }
 
 // ── API response shape ────────────────────────────────────────────────────────
@@ -141,4 +171,6 @@ export interface ViewDataResponse {
   view:      string;
   rows:      Record<string, unknown>[];
   row_count: number;
+  /** Cross-table id→name maps from Hyper extract (e.g. facility_id → Facility_1). */
+  dimension_labels?: Record<string, Record<string, string>>;
 }

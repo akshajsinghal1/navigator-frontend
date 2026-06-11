@@ -69,6 +69,20 @@ USE fetch_view_data ONLY when:
 The FIELD RESOLVER section in your context lists every available field and its source.
 Always check it before deciding to use fetch_view_data.
 
+KPI VALUE CONTRACT — emit on every KPI
+──────────────────────────────────────
+value_source (how the "now" headline is obtained):
+  direct          — raw column from get_field_data / fetch_view_data
+  tableau_formula — workbook calculated field (get_field_data with source=formula)
+  agent_derived   — YOU composed a formula from 2+ fields not in the workbook
+
+When value_source=agent_derived, also emit:
+  l2_derived: { formula, input_fields[], value, unit }
+Do NOT set layer manually — the pipeline computes it.
+
+l2_projection — required for temporal KPIs (revenue, rates over time):
+  daily_rate | ratio | growth_rate — set null ONLY for snapshot KPIs (beds now, queue depth).
+
 You now have a POWERFUL tool: run_analysis — use it when you need to explore data.
 After fetching a view with fetch_view_data, you can optionally run pandas
 expressions to verify values before computing KPIs.
@@ -130,6 +144,11 @@ Many dashboards have both a KPI view (1 row — the current number) and a Trend 
      THOSE rows as raw_data — they give the chart its shape.
   3. If no trend view exists, use the rows you have (even 1 row is fine for kpi_card).
 raw_data should always come from the richest available view — prefer time-series.
+
+MULTI-KPI SUPPORT — the orchestrator designs several KPIs per domain from different
+angles (snapshot gauge, trend line, entity breakdown, funnel, heatmap). Fetch the
+view that best matches EACH KPI's computation_hint — do not reuse the same 1-row
+snapshot for every KPI in the domain when a trend or breakdown view exists.
 
 CONFIDENCE / PREDICTION INTERVALS:
 If a view has columns like Upper Confidence, Lower Confidence, Upper Gap Confidence,
@@ -286,15 +305,21 @@ L2 Projection — define for EVERY KPI
 After computing the L1 value, also set l2_projection so the frontend can show
 7-day and 30-day forward projections. Choose the right method:
 
-  "daily_rate"  — for metrics that ACCUMULATE over time:
-                  revenue, order count, cost, units produced, hours worked
+  "daily_rate"  — for metrics that ACCUMULATE over time (running totals):
+                  revenue, order count, referral count, cost, units produced, hours worked.
                   formula: sum(value_field) / date_span_days × horizon_days
+                  aggregation = "sum"
                   Requires: value_field (the numeric column), date_field (the date column)
                   Example: monthly Sales → 7D projection = (total_sales / 365) × 7
+                  IMPORTANT: use ONLY for true accumulators. Do NOT use for stock/snapshot
+                  fields — summing all historical rows of "available_beds" gives beds×days,
+                  not a meaningful count.
 
   "ratio"       — for PERCENTAGE / RATE metrics that stay roughly constant:
-                  profit margin, on-time delivery rate, conversion rate, satisfaction %
+                  profit margin, on-time delivery rate, conversion rate, satisfaction %,
+                  occupancy %, staffing gap %, overtime %, productivity ratio.
                   projection = same ratio (doesn't change with time horizon)
+                  aggregation = "avg"
                   Requires: value_field (the ratio/% column), aggregation="avg"
                   Example: Profit Margin % → 7D projection = same % as today
 
@@ -303,10 +328,11 @@ After computing the L1 value, also set l2_projection so the frontend can show
                   uses recent compound growth rate to extrapolate forward
                   Requires: value_field, date_field
 
-  "stable"      — for SNAPSHOT metrics that don't meaningfully project forward:
-                  average days to ship, current inventory level, average rating
-                  projection = current value (no change expected)
-                  Requires: value_field, aggregation
+  Decision guide — pick by metric TYPE not by metric NAME:
+    Accumulates over time?        → "daily_rate"  (aggregation="sum")
+    Percentage / ratio?           → "ratio"        (aggregation="avg")
+    Stock / snapshot count?       → l2_projection = null (L1 only — beds now, gauges, bars)
+    Trending stock (growing/shrinking)? → "growth_rate"
 
 Rules — CRITICAL:
 - value_field MUST be a column name that ACTUALLY EXISTS in the rows you fetched.
@@ -316,9 +342,13 @@ Rules — CRITICAL:
   If the column is "Sales", use "Sales". Copy the name verbatim from the column list.
 - date_field MUST be a real date/time column from the same view (if applicable).
   Check the actual column list — if you see "Month of Order Date", use that exact string.
-- Set l2_projection=null only if the KPI genuinely cannot be projected (e.g. geographic
-  snapshot with no time dimension and no rate/stable interpretation).
-- DO NOT set to null just because it's hard — every KPI should have a projection.
+  For temporal charts: date_field MUST equal chart.x_axis (same column for L1/L2/chart/L3).
+- l2_projection.value_field should match l1.field_name when both refer to the same measure.
+- aggregation="avg" for ALL percentage/rate fields and ALL snapshot/stock fields.
+  aggregation="sum" ONLY for true accumulators (revenue, count, cost, volume).
+- Set l2_projection=null for snapshot/stock KPIs (available beds, gauges, categorical bars,
+  heatmaps, current headcount) — they are L1-only; do NOT use a projection method.
+- For rate % and flow/volume trends, always set l2_projection with the matching method.
 
 Payload size — CRITICAL
 ────────────────────────

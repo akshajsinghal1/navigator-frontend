@@ -11,9 +11,9 @@ frontend. Everything inside is agent-derived; nothing is hardcoded.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ── Allowed chart types ──────────────────────────────────────────────────────
 # These are the ONLY fixed boundary on chart selection.
@@ -59,6 +59,22 @@ class L2Data(BaseModel):
     error: Optional[str] = None        # if computation failed, reason here
 
 
+# ── KPI value provenance (L1 headline semantics) ─────────────────────────────
+# direct          — raw Hyper / Tableau column
+# tableau_formula — workbook calculated field (Hyper formula or inventory eval)
+# agent_derived   — agent-composed formula from 2+ fields (headline uses l2_derived)
+KpiValueSource = Literal["direct", "tableau_formula", "agent_derived"]
+ForecastLayer = Literal["l2_projection", "l3"]
+
+
+class L2Derived(BaseModel):
+    """Agent-composed deterministic KPI — headline value for 'now' when value_source=agent_derived."""
+    formula: str
+    input_fields: List[str] = Field(default_factory=list)
+    value: Optional[float] = None
+    unit: Optional[str] = None
+
+
 # ── L2 Projection: how the frontend computes 7D/30D projections from rows ────
 # The domain agent defines this per KPI during the pipeline.
 # The frontend evaluates it on fresh Tableau rows at display time.
@@ -67,9 +83,9 @@ class L2Data(BaseModel):
 #   daily_rate   — cumulative totals (revenue, orders): sum / date_span * horizon_days
 #   ratio        — percentages/rates (margin, on-time %): ratio stays constant
 #   growth_rate  — trending metrics (customer count): compound growth extrapolation
-#   stable       — snapshot metrics (avg LOS, price): same value, no projection
+# Snapshot / stock KPIs omit l2_projection entirely (L1 only — no forward rule).
 class L2Projection(BaseModel):
-    method: Literal["daily_rate", "ratio", "growth_rate", "stable"]
+    method: Literal["daily_rate", "ratio", "growth_rate"]
     value_field: str                   # exact column name for the metric value
     aggregation: Literal["sum", "avg", "count"] = "sum"
     date_field: Optional[str] = None   # date/time column for rate computation
@@ -83,7 +99,8 @@ class ChartSpec(BaseModel):
     x_axis_type: Optional[Literal["categorical", "temporal", "numeric"]] = None
     aggregation: Optional[Literal["sum", "avg", "count", "min", "max"]] = None
     sort_order: Optional[Literal["asc", "desc", "none"]] = None
-    breakdown_by: Optional[str] = None # e.g. "Segment", "Category"
+    breakdown_by: Optional[str] = None              # e.g. "facility_id", "Segment"
+    breakdown_labels: Optional[Dict[str, str]] = None  # maps raw key → display label
     color_by: Optional[str] = None
     sort_by: Optional[str] = None
     filters: List[str] = []
@@ -119,12 +136,28 @@ class Explanation(BaseModel):
     key_insight: Optional[str] = None  # standout insight the agent found
 
 
+# ── L3 TimesFM forecast (added post-pipeline) ───────────────────────────────
+class L3Forecast(BaseModel):
+    model:        str          = "timesfm-2.5-200m"
+    horizon_days: int          = 30
+    predictions:  List[float]  = Field(default_factory=list)   # point forecast per day
+    lower_p10:    List[float]  = Field(default_factory=list)   # 10th percentile
+    upper_p90:    List[float]  = Field(default_factory=list)   # 90th percentile
+    generated_at: str          = ""
+
+
 # ── Single KPI ───────────────────────────────────────────────────────────────
 class KPI(BaseModel):
     id: str                            # snake_case slug, e.g. "total_sales"
     name: str                          # display name, e.g. "Total Sales"
     description: str                   # one-sentence description
-    layer: Literal["L1", "L2", "L3"] = "L1"  # L1=direct, L2=deterministic formula, L3=predictive ML
+    layer: Literal["L1", "L2", "L3"] = "L1"  # pipeline-computed headline layer tag (L3 = period overlay only)
+    value_source: KpiValueSource = "direct"    # how the 'now' headline value is obtained
+    l2_derived: Optional[L2Derived] = None     # set when value_source=agent_derived
+    forecast_layers: List[ForecastLayer] = Field(
+        default_factory=list,
+        description="Which forward layers to render on 7D/30D (l2_projection + l3 together)",
+    )
     priority: int = Field(default=50, ge=0, le=100)
     # 80-100 = critical for this persona today (risk, bad trend, anomaly)
     # 60-79  = important context (stable but core metric)
@@ -133,6 +166,8 @@ class KPI(BaseModel):
     l1: Optional[L1Data] = None
     l2: Optional[L2Data] = None
     l2_projection: Optional[L2Projection] = None  # agent-defined projection method for 7D/30D
+    l3_forecast: Optional["L3Forecast"] = None    # TimesFM predictions (populated post-pipeline)
+    l3_forecast_by_series: Optional[Dict[str, L3Forecast]] = None  # per breakdown value when chart.breakdown_by is set
     trend_direction: Optional[Literal["up", "down", "flat"]] = None
     trend_pct: Optional[float] = None  # % change vs prior period, e.g. 12.3
     chart: ChartSpec
@@ -141,6 +176,15 @@ class KPI(BaseModel):
         default_factory=list,
         description="Rows fetched from Tableau for this KPI (used by frontend to render chart)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_deprecated_stable_projection(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            lp = data.get("l2_projection")
+            if isinstance(lp, dict) and lp.get("method") == "stable":
+                data["l2_projection"] = None
+        return data
 
 
 # ── Dashboard section (group of related KPIs) ────────────────────────────────

@@ -9,7 +9,6 @@ Production: swap for DB/cache lookup (same as dashboard.py).
 
 from __future__ import annotations
 
-import glob
 import json
 import logging
 from pathlib import Path
@@ -35,17 +34,18 @@ def get_latest_config(workbook_name: str):
     Returns:
         Raw Intelligence Config JSON dict
     """
-    pattern = str(Path("output") / f"intelligence_config_{workbook_name}_*.json")
-    files = sorted(glob.glob(pattern))
+    from api.config_files import resolve_intelligence_config_path
 
-    if not files:
+    output_dir = Path("output")
+    latest = resolve_intelligence_config_path(output_dir, workbook_name)
+
+    if not latest:
         raise HTTPException(
             status_code=404,
             detail=f"No Intelligence Config found for workbook '{workbook_name}'. "
                    "Run the pipeline first: python run_pipeline.py",
         )
 
-    latest = files[-1]
     log.info("Serving config from %s", latest)
 
     with open(latest, encoding="utf-8") as f:

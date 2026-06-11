@@ -6,7 +6,8 @@
 //   Screen 3 — NavigatorApp   : fully rendered intelligence dashboard
 //
 // Navigation is state-based (no router needed for 3 screens).
-// URL deeplink: ?workbook=X&company=Y skips to Screen 3 directly.
+// URL deeplink: ?workbook=X skips to Screen 3 (optional &company=Y for freshness polling).
+// Demo: ?workbook=NAVIGATOR_DEMO
 
 import { useRef, useState } from "react";
 import { ChartThemeProvider } from "./context/ChartThemeContext";
@@ -17,27 +18,35 @@ import type { ConnectResult } from "./screens/ConnectScreen";
 
 type Screen = "connect" | "pipeline" | "dashboard";
 
+function toCompanySlug(workbookId: string): string {
+  return workbookId
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .replace(/^_+|_+$/g, "") || "company";
+}
+
 function resolveInitialScreen(): { screen: Screen; workbook?: string; companyId?: string } {
   const params = new URLSearchParams(window.location.search);
-  const workbook   = params.get("workbook") ?? undefined;
-  const companyId  = params.get("company")  ?? undefined;
+  const workbook  = params.get("workbook") ?? undefined;
+  const companyId = params.get("company") ?? (workbook ? toCompanySlug(workbook) : undefined);
 
-  if (workbook && companyId) return { screen: "dashboard", workbook, companyId };
+  if (workbook) return { screen: "dashboard", workbook, companyId };
   return { screen: "connect" };
 }
 
 function DemoInner() {
   const init = resolveInitialScreen();
-  const [screen, setScreen]       = useState<Screen>(init.screen);
-  const [runInfo, setRunInfo]     = useState<ConnectResult | null>(null);
-  const [companyId, setCompanyId] = useState<string>(init.companyId ?? "");
-  const workbookIdRef             = useRef<string>(init.workbook ?? "");
+  const [screen, setScreen]         = useState<Screen>(init.screen);
+  const [runInfo, setRunInfo]       = useState<ConnectResult | null>(null);
+  const [workbookId, setWorkbookId] = useState<string>(init.workbook ?? "");
+  const [companyId, setCompanyId]   = useState<string>(init.companyId ?? "");
+  const workbookIdRef               = useRef<string>(init.workbook ?? "");
 
-  function syncUrl(nextScreen: Screen, nextCompanyId: string) {
+  function syncUrl(nextScreen: Screen, nextWorkbook: string, nextCompanyId: string) {
     const params = new URLSearchParams(window.location.search);
-    if (nextScreen === "dashboard" && nextCompanyId) {
-      params.set("company", nextCompanyId);
-      if (workbookIdRef.current) params.set("workbook", workbookIdRef.current);
+    if (nextScreen === "dashboard" && nextWorkbook) {
+      params.set("workbook", nextWorkbook);
+      if (nextCompanyId) params.set("company", nextCompanyId);
     } else {
       params.delete("company");
       params.delete("workbook");
@@ -48,23 +57,25 @@ function DemoInner() {
 
   function handleConnect(result: ConnectResult) {
     workbookIdRef.current = result.workbook;
+    setWorkbookId(result.workbook);
     setRunInfo(result);
     setScreen("pipeline");
-    syncUrl("pipeline", "");
+    syncUrl("pipeline", result.workbook, "");
   }
 
   function handleDone(company: string) {
     setCompanyId(company);
     setScreen("dashboard");
-    syncUrl("dashboard", company);
+    syncUrl("dashboard", workbookIdRef.current, company);
   }
 
   function handleReset() {
     workbookIdRef.current = "";
+    setWorkbookId("");
     setScreen("connect");
     setRunInfo(null);
     setCompanyId("");
-    syncUrl("connect", "");
+    syncUrl("connect", "", "");
   }
 
   if (screen === "connect") {
@@ -82,10 +93,10 @@ function DemoInner() {
     );
   }
 
-  if (screen === "dashboard") {
+  if (screen === "dashboard" && workbookId) {
     return (
       <NavigatorInner
-        workbookId={companyId}
+        workbookId={workbookId}
         onBack={handleReset}
       />
     );

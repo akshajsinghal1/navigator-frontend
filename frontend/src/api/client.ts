@@ -1,11 +1,26 @@
 import type { NavigatorConfig, ViewDataResponse } from "../types/navigator";
 
 const BASE = "/api";
+const FETCH_TIMEOUT_MS = 30_000;
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(BASE + path);
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
-  return res.json() as Promise<T>;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(BASE + path, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+    return res.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `API timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}. ` +
+          "Is uvicorn running on port 8002? Restart: python -m uvicorn api.main:app --port 8002",
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Inventory response type ───────────────────────────────────────────────────

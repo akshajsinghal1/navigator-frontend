@@ -9,7 +9,8 @@ import "./styles/globals.css";
 //   Screen 3: Navigator dashboard (any workbook)
 //
 // Deeplink to dashboard directly:
-//   http://localhost:5173/?workbook=Superstore&company=superstore
+//   http://localhost:5173/?workbook=Superstore
+//   http://localhost:5173/?workbook=NAVIGATOR_DEMO   (pinned demo config)
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
