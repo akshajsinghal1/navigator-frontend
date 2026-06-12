@@ -35,6 +35,12 @@ function resolveWorkbook(): string {
   );
 }
 
+/** Org persona filter — member sees only their assigned persona dashboard. */
+function resolveOrgPersonaId(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("org_persona_id");
+}
+
 /** Convert a workbook content URL to a company_id (mirrors backend _slugify). */
 function toCompanyId(workbookId: string): string {
   return workbookId
@@ -55,13 +61,19 @@ const DEMO_DATA_WORKBOOK = "Navigator_Predictive_Analytics_v2_Extract";
 // ── Inner app (inside ChartThemeProvider) ─────────────────────────────────────
 
 interface NavigatorInnerProps {
-  workbookId?: string;   // override URL param (used by DemoApp)
-  onBack?: () => void;   // "← New workbook" callback (used by DemoApp)
+  workbookId?: string;       // override URL param (used by DemoApp)
+  orgPersonaId?: string | null; // override ?org_persona_id= (nav-rbac member view)
+  onBack?: () => void;       // "← New workbook" callback (used by DemoApp)
 }
 
-export function NavigatorInner({ workbookId: propWorkbookId, onBack }: NavigatorInnerProps = {}) {
+export function NavigatorInner({
+  workbookId: propWorkbookId,
+  orgPersonaId: propOrgPersonaId,
+  onBack,
+}: NavigatorInnerProps = {}) {
   const { palette } = useChartTheme();
   const workbookId = propWorkbookId ?? resolveWorkbook();
+  const orgPersonaId = propOrgPersonaId ?? resolveOrgPersonaId();
   const companyId  = toCompanyId(workbookId);
 
   const [config, setConfig]     = useState<NavigatorConfig | null>(null);
@@ -103,7 +115,7 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
     // Reset to loading state by clearing config and error
     setConfig(null);
     setError(null);
-    api.intelligenceConfig(workbookId)
+    api.intelligenceConfig(workbookId, orgPersonaId)
       .then((cfg) => {
         setConfig(cfg);
         setPersonaIdx(0);
@@ -116,7 +128,7 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
         }
       })
       .catch((err) => setError(String(err)));
-  }, [workbookId]);
+  }, [workbookId, orgPersonaId]);
 
   // Initial load — config is async-fetched, not synchronously derivable
   // eslint-disable-next-line react-doctor/no-derived-state
@@ -133,7 +145,7 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
     // fresh Hyper rows instead of serving the now-stale in-memory copy.
     clearRowCache(dataWorkbookId);
     // Re-fetch config without showing the full-screen spinner (no config=null reset)
-    api.intelligenceConfig(workbookId)
+    api.intelligenceConfig(workbookId, orgPersonaId)
       .then((cfg) => {
         setConfig(cfg);
         const demoLabels = cfg.demo?.facility_labels;
@@ -146,7 +158,7 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
         // Keep personaIdx where the user is — don't reset to 0
       })
       .catch(() => { /* silently ignore — user keeps stale view */ });
-  }, [dataUpdated, workbookId, dataWorkbookId, clearDataUpdated]);
+  }, [dataUpdated, workbookId, dataWorkbookId, orgPersonaId, clearDataUpdated]);
 
   const activePersona: NavigatorPersona | null = config?.personas?.[personaIdx] ?? null;
 
@@ -363,32 +375,34 @@ export function NavigatorInner({ workbookId: propWorkbookId, onBack }: Navigator
         </span>
       </header>
 
-      {/* ── Persona tabs ── */}
-      <div style={{
-        padding: "0 40px",
-        borderBottom: `1px solid ${palette.line}`,
-        display: "flex", gap: 0,
-        background: palette.bg1,
-      }}>
-        {config.personas.map((pv, i) => {
-          const active = i === personaIdx;
-          return (
-            <button
-              key={pv.persona.role}
-              type="button"
-              onClick={() => setPersonaIdx(i)}
-              style={{
-                ...tabBtnBase,
-                fontWeight: active ? 600 : 400,
-                color: active ? palette.accent : palette.ink3,
-                borderBottom: active ? `2px solid ${palette.accent}` : "2px solid transparent",
-              }}
-            >
-              {pv.persona.role}
-            </button>
-          );
-        })}
-      </div>
+      {/* ── Persona tabs (hidden when API filtered to one org persona) ── */}
+      {config.personas.length > 1 && (
+        <div style={{
+          padding: "0 40px",
+          borderBottom: `1px solid ${palette.line}`,
+          display: "flex", gap: 0,
+          background: palette.bg1,
+        }}>
+          {config.personas.map((pv, i) => {
+            const active = i === personaIdx;
+            return (
+              <button
+                key={pv.persona.org_persona_id ?? pv.persona.role}
+                type="button"
+                onClick={() => setPersonaIdx(i)}
+                style={{
+                  ...tabBtnBase,
+                  fontWeight: active ? 600 : 400,
+                  color: active ? palette.accent : palette.ink3,
+                  borderBottom: active ? `2px solid ${palette.accent}` : "2px solid transparent",
+                }}
+              >
+                {pv.persona.role}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Focus areas removed — they're visible in the persona tab subtitle */}
 

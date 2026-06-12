@@ -51,8 +51,16 @@ export const api = {
   // ── Navigator Intelligence Config ────────────────────────────────────────────
   // GET /dashboard/{workbook}  — returns DashboardConfigResponse wrapping the config.
   // We unwrap .config to get the raw IntelligenceConfig the frontend expects.
-  intelligenceConfig: async (workbook: string): Promise<NavigatorConfig> => {
-    const res = await get<{ config: NavigatorConfig }>(`/dashboard/${encodeURIComponent(workbook)}`);
+  intelligenceConfig: async (
+    workbook: string,
+    orgPersonaId?: string | null,
+  ): Promise<NavigatorConfig> => {
+    const qs = orgPersonaId
+      ? `?org_persona_id=${encodeURIComponent(orgPersonaId)}`
+      : "";
+    const res = await get<{ config: NavigatorConfig }>(
+      `/dashboard/${encodeURIComponent(workbook)}${qs}`,
+    );
     return res.config;
   },
 

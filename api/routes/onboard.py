@@ -59,9 +59,15 @@ def onboard(req: OnboardRequest):
         "tableau_pat_secret": req.tableau_pat_secret,
     }
 
+    org_context = {
+        "organization_id": req.organization_id,
+        "industry_name":   req.industry_name,
+        "required_personas": [p.model_dump() for p in req.required_personas],
+    }
+
     thread = threading.Thread(
         target=_run_pipeline_thread,
-        args=(company_id, run_id, req.workbook_content_url, creds),
+        args=(company_id, run_id, req.workbook_content_url, creds, org_context),
         daemon=True,
     )
     thread.start()
@@ -83,6 +89,7 @@ def _run_pipeline_thread(
     run_id: str,
     workbook_content_url: str,
     creds: dict,
+    org_context: dict | None = None,
 ) -> None:
     """Background thread: run the full pipeline with rich status messages."""
     log.info("[%s] Pipeline thread started for %s", run_id, company_id)
@@ -155,6 +162,7 @@ def _run_pipeline_thread(
             workbook_content_url    = workbook_content_url,
             output_dir              = "output",
             existing_inventory_path = inv_path,
+            org_context             = org_context or {},
         )
 
         emit(run_id, "Orchestrator",

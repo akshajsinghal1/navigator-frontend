@@ -198,6 +198,7 @@ class DashboardSection(BaseModel):
 # ── Persona ──────────────────────────────────────────────────────────────────
 class Persona(BaseModel):
     role: str                          # e.g. "Sales Operations Director"
+    org_persona_id: Optional[str] = None  # links to public.personas.id from customer onboarding
     focus_areas: List[str]             # e.g. ["revenue", "commission", "forecasting"]
     rationale: str                     # why this persona was derived from the workbook
     persona_level: Literal["executive", "manager", "analyst"] = "manager"

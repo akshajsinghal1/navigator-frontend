@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from schemas.api import DashboardConfigResponse
 
@@ -37,7 +37,13 @@ def _load_config_from_file(company_id: str) -> dict | None:
 
 
 @router.get("/{company_id}", response_model=DashboardConfigResponse)
-def get_dashboard_config(company_id: str):
+def get_dashboard_config(
+    company_id: str,
+    org_persona_id: str | None = Query(
+        None,
+        description="Filter to a single org persona (public.personas.id from customer onboarding)",
+    ),
+):
     """
     Return the latest Intelligence Config for a company.
 
@@ -58,6 +64,9 @@ def get_dashboard_config(company_id: str):
                     "Run: python scripts/build_demo_snapshot.py"
                 ),
             )
+        if org_persona_id:
+            from pipeline.org_personas import filter_config_for_persona
+            config_dict = filter_config_for_persona(config_dict, org_persona_id)
         return DashboardConfigResponse(
             company_id     = company_id,
             config_version = config_dict.get("version", "1.0"),
@@ -113,6 +122,10 @@ def get_dashboard_config(company_id: str):
                 "Run the pipeline first: python run_pipeline.py --workbook {company_id}"
             ),
         )
+
+    if org_persona_id:
+        from pipeline.org_personas import filter_config_for_persona
+        config_dict = filter_config_for_persona(config_dict, org_persona_id)
 
     return DashboardConfigResponse(
         company_id      = company_id,

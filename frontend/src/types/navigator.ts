@@ -126,6 +126,7 @@ export type PersonaLevel = "executive" | "manager" | "analyst";
 
 export interface NavigatorPersonaInfo {
   role:             string;
+  org_persona_id?:  string;         // links to public.personas.id (customer onboarding)
   focus_areas:      string[];
   rationale?:       string;
   persona_level?:   PersonaLevel;   // executive / manager / analyst

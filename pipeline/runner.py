@@ -189,6 +189,7 @@ class PipelineRunner:
         workbook_content_url: str,
         existing_inventory_path: str | Path | None = None,
         offline: bool = False,
+        org_context: dict | None = None,
     ) -> IntelligenceConfig:
         """
         Run the full pipeline.
@@ -410,8 +411,29 @@ class PipelineRunner:
                 hyper_schema    = hyper_schema,   # full schema for cross-table column lookup
             )
 
+            org_ctx = org_context or {}
+            required_personas = org_ctx.get("required_personas") or []
+            if required_personas:
+                log.info(
+                    "Org personas: %d required — %s",
+                    len(required_personas),
+                    [p.get("name") for p in required_personas],
+                )
+
             log.info("Running orchestrator agent")
-            config = orchestrator.run_pipeline(filtered, eda=eda, profile_text=profile_text)
+            config = orchestrator.run_pipeline(
+                filtered,
+                eda=eda,
+                profile_text=profile_text,
+                required_personas=required_personas,
+                industry_name=org_ctx.get("industry_name"),
+            )
+
+            if required_personas:
+                from pipeline.org_personas import enforce_org_personas
+                persona_fixes = enforce_org_personas(config, required_personas)
+                for msg in persona_fixes:
+                    log.info("Org personas: %s", msg)
 
             # ── step 7: QA agent — review config, find gaps, add missing KPIs ──
             qa_emitted    = False
@@ -594,6 +616,7 @@ class PipelineRunner:
         output_dir: str | Path = "output",
         existing_inventory_path: str | Path | None = None,
         offline: bool = False,
+        org_context: dict | None = None,
     ) -> tuple[IntelligenceConfig, Path]:
         """
         Run the pipeline and save the config to a JSON file.
@@ -601,7 +624,12 @@ class PipelineRunner:
         Returns:
             (IntelligenceConfig, path_to_saved_file)
         """
-        config = self.run(workbook_content_url, existing_inventory_path, offline=offline)
+        config = self.run(
+            workbook_content_url,
+            existing_inventory_path,
+            offline=offline,
+            org_context=org_context,
+        )
 
         output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True)

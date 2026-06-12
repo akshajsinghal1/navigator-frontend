@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 
 # ── Onboarding ───────────────────────────────────────────────────────────────
 
+class OrgPersonaInput(BaseModel):
+    """Persona declared at org onboarding — pipeline must not invent others."""
+    id: str = Field(..., description="UUID from public.personas")
+    name: str = Field(..., description="Display name, e.g. CFO")
+
+
 class OnboardRequest(BaseModel):
     tableau_server_url: str = Field(..., description="e.g. https://us-east-1.online.tableau.com")
     tableau_site_name:  str = Field(..., description="e.g. navigatorpilot")
@@ -20,6 +26,12 @@ class OnboardRequest(BaseModel):
     tableau_pat_secret: str = Field(..., description="Personal Access Token secret")
     workbook_content_url: str = Field(..., description="Content URL of the target workbook")
     company_id: str = Field(..., description="Unique identifier for this company/tenant")
+    organization_id: Optional[str] = Field(None, description="Customer org UUID (nav-rbac)")
+    industry_name: Optional[str] = Field(None, description="Org industry from onboarding")
+    required_personas: list[OrgPersonaInput] = Field(
+        default_factory=list,
+        description="Exact personas from org onboarding — agent must not add/rename",
+    )
 
 
 class OnboardResponse(BaseModel):

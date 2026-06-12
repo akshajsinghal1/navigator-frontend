@@ -52,45 +52,47 @@ def get_inventory(company_id: str):
         reverse=True,
     )
 
-    if not config_files:
+    if not inventory_files and not config_files:
         raise HTTPException(
             status_code=404,
             detail=f"No pipeline output found for '{company_id}'. Run the pipeline first.",
         )
 
-    # ── Load intelligence config (always available post-pipeline) ──────────────
-    try:
-        cfg = json.loads(config_files[0].read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to read config: {exc}")
+    # ── Load intelligence config when available (end of pipeline) ─────────────
+    cfg: dict = {}
+    workbook_meta: dict = {}
+    persona_list: list[dict] = []
+    total_kpis = 0
 
-    workbook_meta = cfg.get("workbook", {})
+    if config_files:
+        try:
+            cfg = json.loads(config_files[0].read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to read config: {exc}") from exc
 
-    # ── Compute KPI + persona stats from config ────────────────────────────────
-    personas = cfg.get("personas", [])
-    persona_list = []
-    total_kpis   = 0
+        workbook_meta = cfg.get("workbook", {})
+        for pv in cfg.get("personas", []):
+            p = pv.get("persona", {})
+            kpis = [k for sec in pv.get("dashboard_sections", []) for k in sec.get("kpis", [])]
+            total_kpis += len(kpis)
+            persona_list.append({
+                "role":        p.get("role", ""),
+                "focus_areas": p.get("focus_areas", []),
+                "kpi_count":   len(kpis),
+                "kpi_names":   [k.get("name", "") for k in kpis],
+            })
 
-    for pv in personas:
-        p    = pv.get("persona", {})
-        kpis = [k for sec in pv.get("dashboard_sections", []) for k in sec.get("kpis", [])]
-        total_kpis += len(kpis)
-        persona_list.append({
-            "role":        p.get("role", ""),
-            "focus_areas": p.get("focus_areas", []),
-            "kpi_count":   len(kpis),
-            "kpi_names":   [k.get("name", "") for k in kpis],
-        })
-
-    # ── Load raw inventory if available ───────────────────────────────────────
-    views       = []
-    datasources = []
-    parameters  = []
+    # ── Load raw Tableau inventory (available mid-pipeline) ───────────────────
+    views: list[dict] = []
+    datasources: list[dict] = []
+    parameters: list[dict] = []
     total_fields = 0
+    workbook_name = workbook_meta.get("name") or company_id
 
     if inventory_files:
         try:
             inv = json.loads(inventory_files[0].read_text(encoding="utf-8"))
+            workbook_name = inv.get("workbook_name") or workbook_name
 
             views = [
                 {"name": v.get("name", ""), "updated_at": v.get("updated_at")}
@@ -117,13 +119,13 @@ def get_inventory(company_id: str):
         except Exception as exc:
             log.warning("Could not read inventory file: %s", exc)
 
-    # ── If no inventory file, synthesise from config ───────────────────────────
+    # ── If no inventory file yet, synthesise from config ───────────────────────
     if not datasources and workbook_meta.get("data_sources"):
         datasources = [{"name": ds, "field_count": None} for ds in workbook_meta["data_sources"]]
 
     return {
         "company_id":    company_id,
-        "workbook_name": workbook_meta.get("name", company_id),
+        "workbook_name": workbook_name,
         "generated_at":  cfg.get("generated_at", ""),
         "objective":     cfg.get("objective", ""),
 
@@ -134,7 +136,7 @@ def get_inventory(company_id: str):
         "total_fields": total_fields,
         "parameters":   parameters,
 
-        # What Navigator generated
+        # What Navigator generated (empty until config is written)
         "total_kpis":    total_kpis,
         "persona_count": len(persona_list),
         "personas":      persona_list,

@@ -597,6 +597,8 @@ class OrchestratorAgent(BaseAgent):
         filtered_inventory: dict[str, Any],
         eda: dict[str, Any] | None = None,
         profile_text: str = "",
+        required_personas: list[dict[str, Any]] | None = None,
+        industry_name: str | None = None,
     ) -> IntelligenceConfig:
         """
         Run the full orchestration pipeline.
@@ -612,6 +614,9 @@ class OrchestratorAgent(BaseAgent):
             IntelligenceConfig — the complete, assembled config
         """
         from pipeline.eda import format_eda_for_agent  # late import
+
+        self._required_personas: list[dict[str, Any]] = list(required_personas or [])
+        self._industry_name = (industry_name or "").strip()
 
         # Prefer the verified profile; fall back to structural EDA only if absent.
         eda_text = profile_text or (format_eda_for_agent(eda) if eda else "")
@@ -693,7 +698,29 @@ class OrchestratorAgent(BaseAgent):
             len(view_quality), scalar_views, degen_views,
         )
 
-        user_msg = json.dumps({
+        task_text = (
+            "Analyze this Tableau workbook. The VERIFIED_DATA_PROFILE is computed ground "
+            "truth — design from it, and OBEY its MANDATORY DATA-QUALITY RULES exactly "
+            "(scalar views -> kpi_card/gauge; never break a measure down by a degenerate dimension; "
+            "never headline a near-uniform segment; use canonical labels; use EXACT column names). "
+            "Identify the single business objective and design RICH, MULTI-ANGLE intelligence: "
+            "many meaningful KPIs per domain, broad business coverage, diverse chart intents, "
+            "as many domains/personas as the data warrants. Use all Phase-A turns needed for "
+            "full view coverage, then chart specs (Phase B), then emit (Phase C). "
+            "Use EXACT column names from the profile / reachable_fields — never invent or reformat them."
+        )
+        if self._required_personas:
+            names = [p.get("name", "") for p in self._required_personas]
+            task_text = (
+                "Analyze this Tableau workbook using VERIFIED_DATA_PROFILE as ground truth. "
+                f"CRITICAL PERSONA CONTRACT: emit EXACTLY {len(self._required_personas)} personas "
+                f"with role set to these exact names (no additions, no renames): {names}. "
+                "Design KPIs and domains ONLY inside those personas — do not invent CFO, "
+                "Sales Manager, or other roles not in the list. "
+                "Use all Phase-A turns for view coverage, then chart specs (Phase B), emit (Phase C)."
+            )
+
+        payload: dict[str, Any] = {
             "VERIFIED_DATA_PROFILE": eda_text or None,
             "VIEW_QUALITY":          view_quality or None,   # ← new: per-view planning facts
             "workbook_inventory":  filtered_inventory,
@@ -717,18 +744,13 @@ class OrchestratorAgent(BaseAgent):
                     "in each KPI description — avoid designing everything as a line chart."
                 ),
             },
-            "task": (
-                "Analyze this Tableau workbook. The VERIFIED_DATA_PROFILE is computed ground "
-                "truth — design from it, and OBEY its MANDATORY DATA-QUALITY RULES exactly "
-                "(scalar views -> kpi_card/gauge; never break a measure down by a degenerate dimension; "
-                "never headline a near-uniform segment; use canonical labels; use EXACT column names). "
-                "Identify the single business objective and design RICH, MULTI-ANGLE intelligence: "
-                "many meaningful KPIs per domain, broad business coverage, diverse chart intents, "
-                "as many domains/personas as the data warrants. Use all Phase-A turns needed for "
-                "full view coverage, then chart specs (Phase B), then emit (Phase C). "
-                "Use EXACT column names from the profile / reachable_fields — never invent or reformat them."
-            ),
-        }, indent=2, default=_json_default)
+            "task": task_text,
+        }
+        if self._required_personas:
+            payload["REQUIRED_ORG_PERSONAS"] = self._required_personas
+            if self._industry_name:
+                payload["ORG_INDUSTRY"] = self._industry_name
+        user_msg = json.dumps(payload, indent=2, default=_json_default)
 
         outcome = self.run(user_msg)
 
@@ -1518,12 +1540,23 @@ class OrchestratorAgent(BaseAgent):
         # Each entry: (role, focus_areas, objective, kpi_data) — for parallel summary run
         _pending_summaries: list[tuple] = []
 
+        from pipeline.org_personas import _persona_names_match
+
         for p_raw in emit.get("personas", []):
+            org_persona_id = p_raw.get("org_persona_id")
+            role = p_raw["role"]
+            if not org_persona_id and getattr(self, "_required_personas", None):
+                for req in self._required_personas:
+                    if _persona_names_match(role, str(req.get("name", ""))):
+                        org_persona_id = str(req["id"])
+                        role = str(req["name"])
+                        break
             persona = Persona(
-                role          = p_raw["role"],
-                focus_areas   = p_raw.get("focus_areas", []),
-                rationale     = p_raw.get("rationale", ""),
-                persona_level = p_raw.get("persona_level") or _infer_persona_level(p_raw["role"]),
+                role            = role,
+                org_persona_id  = org_persona_id,
+                focus_areas     = p_raw.get("focus_areas", []),
+                rationale       = p_raw.get("rationale", ""),
+                persona_level   = p_raw.get("persona_level") or _infer_persona_level(role),
             )
 
             # Build this persona's sections independently
