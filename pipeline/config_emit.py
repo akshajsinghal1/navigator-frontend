@@ -101,7 +101,8 @@ def apply_trend_from_cache(kpi: KPI, view_cache: dict[str, list[dict]]) -> list[
         return changes
 
     l2 = kpi.l2_projection
-    date_col = find_date_column(rows, l2.date_field, kpi.chart.x_axis)
+    x_hint = kpi.chart.x_axis if kpi.chart.x_axis_type == "temporal" else None
+    date_col = find_date_column(rows, l2.date_field, x_hint)
     if not date_col:
         return changes
 

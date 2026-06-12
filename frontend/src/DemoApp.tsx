@@ -7,6 +7,7 @@
 //
 // Navigation is state-based (no router needed for 3 screens).
 // URL deeplink: ?workbook=X skips to Screen 3 (optional &company=Y for freshness polling).
+// Deeplink: ?runId=X&company=Y&workbook=Z goes straight to Screen 2 (PipelineScreen).
 // Demo: ?workbook=NAVIGATOR_DEMO
 
 import { useRef, useState } from "react";
@@ -25,19 +26,34 @@ function toCompanySlug(workbookId: string): string {
     .replace(/^_+|_+$/g, "") || "company";
 }
 
-function resolveInitialScreen(): { screen: Screen; workbook?: string; companyId?: string } {
-  const params = new URLSearchParams(window.location.search);
+function resolveInitialScreen(): {
+  screen: Screen;
+  workbook?: string;
+  companyId?: string;
+  runId?: string;
+} {
+  const params    = new URLSearchParams(window.location.search);
   const workbook  = params.get("workbook") ?? undefined;
   const companyId = params.get("company") ?? (workbook ? toCompanySlug(workbook) : undefined);
+  const runId     = params.get("runId") ?? undefined;
 
-  if (workbook) return { screen: "dashboard", workbook, companyId };
+  // ?runId= deeplink → jump straight to PipelineScreen (redirected from nav-rbac)
+  if (runId && companyId) return { screen: "pipeline", workbook, companyId, runId };
+  if (workbook)           return { screen: "dashboard", workbook, companyId };
   return { screen: "connect" };
 }
 
 function DemoInner() {
   const init = resolveInitialScreen();
+
+  // When arriving via ?runId= deeplink, seed runInfo from URL params so
+  // PipelineScreen can start polling immediately without a ConnectScreen submit.
+  const initialRunInfo: ConnectResult | null = init.runId
+    ? { run_id: init.runId, company_id: init.companyId ?? "", workbook: init.workbook ?? "" }
+    : null;
+
   const [screen, setScreen]         = useState<Screen>(init.screen);
-  const [runInfo, setRunInfo]       = useState<ConnectResult | null>(null);
+  const [runInfo, setRunInfo]       = useState<ConnectResult | null>(initialRunInfo);
   const [workbookId, setWorkbookId] = useState<string>(init.workbook ?? "");
   const [companyId, setCompanyId]   = useState<string>(init.companyId ?? "");
   const workbookIdRef               = useRef<string>(init.workbook ?? "");

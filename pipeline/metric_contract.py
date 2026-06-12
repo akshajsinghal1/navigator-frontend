@@ -331,10 +331,11 @@ def compute_count_breakdown_headline(kpi: KPI, rows: list[dict]) -> float | None
     ys_sorted = sorted(ys)
     threshold = ys_sorted[max(int(len(ys_sorted) * 0.75) - 1, 0)]
 
+    _x_hint = kpi.chart.x_axis if kpi.chart.x_axis_type == "temporal" else None
     date_col = find_date_column(
         rows,
         kpi.l2_projection.date_field if kpi.l2_projection else None,
-        kpi.chart.x_axis,
+        _x_hint,
     )
     if date_col:
         keys = sorted(
@@ -454,10 +455,11 @@ def compute_l1_value(kpi: KPI, rows: list[dict]) -> float | None:
         return None
 
     kind = resolve_metric_kind(kpi, rows)
+    _x_hint = kpi.chart.x_axis if kpi.chart.x_axis_type == "temporal" else None
     date_col = find_date_column(
         rows,
         l2.date_field if l2 else None,
-        kpi.chart.x_axis,
+        _x_hint,
     )
 
     if kind == "snapshot" and date_col:
@@ -536,7 +538,8 @@ def compute_l2_projection_value(
     value_col = find_column(rows, l2.value_field)
     if not value_col:
         return None
-    date_col = find_date_column(rows, l2.date_field, kpi.chart.x_axis)
+    x_hint = kpi.chart.x_axis if kpi.chart.x_axis_type == "temporal" else None
+    date_col = find_date_column(rows, l2.date_field, x_hint)
 
     if l2.method == "ratio":
         return compute_l1_value(kpi, rows)

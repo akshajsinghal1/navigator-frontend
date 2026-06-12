@@ -55,11 +55,19 @@ def _name_has_any(name_n: str, kws: tuple[str, ...]) -> bool:
     return any(kw in name_n for kw in kws)
 
 
+_TEMPORAL_NAME_KWS = ("date", "time", "timestamp", "day", "month", "hour", "created", "period")
+
+
 def _is_temporal_kpi(kpi: KPI, rows: list[dict] | None) -> bool:
     if kpi.chart.x_axis_type == "temporal":
         return True
-    if rows and kpi.chart.x_axis and find_date_column(rows, kpi.chart.x_axis):
-        return True
+    # Only count x_axis as temporal when the column name itself looks like a date field.
+    # find_date_column with an arbitrary hint just checks column existence, so passing
+    # a categorical field like "Region" or "Category" would incorrectly return True.
+    if rows and kpi.chart.x_axis:
+        col = find_column(rows, kpi.chart.x_axis)
+        if col and any(kw in col.lower() for kw in _TEMPORAL_NAME_KWS):
+            return True
     if kpi.l2_projection and kpi.l2_projection.date_field:
         if rows and find_date_column(rows, kpi.l2_projection.date_field):
             return True
@@ -275,9 +283,12 @@ def classify_kpi(kpi: KPI, view_cache: dict[str, list[dict]]) -> list[str]:
                         changes.append(f"{name}: value_field → '{col}'")
                         break
 
-        # date_field for temporal charts
+        # date_field for temporal charts — only pass x_axis as a hint when it's
+        # actually temporal; categorical fields (Region, Category) would otherwise
+        # be picked up by find_date_column's hint-existence check.
         if rows and _is_temporal_kpi(kpi, rows):
-            dc = find_date_column(rows, l2.date_field, kpi.chart.x_axis)
+            x_hint = ch.x_axis if ch.x_axis_type == "temporal" else None
+            dc = find_date_column(rows, l2.date_field, x_hint)
             if dc and l2.date_field != dc:
                 l2.date_field = dc
                 changes.append(f"{name}: date_field → '{dc}'")

@@ -249,10 +249,26 @@ export function resolveL3Eligible(kpi: NavigatorKPI): boolean {
   return xType === "temporal" || TEMPORAL_CHART_TYPES.has(ctype);
 }
 
-/** True when 7D/30D should use forward L2 projection (not windowed history). */
+/** True when 7D/30D uses forward daily_rate / growth_rate (not windowed history). */
 export function usesL2ForwardProjection(kpi: NavigatorKPI): boolean {
   const m = kpi.l2_projection?.method;
   return m === "daily_rate" || m === "growth_rate";
+}
+
+/** Config declares L2 projection for this period (all methods including ratio). */
+export function hasL2ProjectionLayer(kpi: NavigatorKPI): boolean {
+  if (!kpi.l2_projection) return false;
+  const layers = kpi.forecast_layers;
+  if (layers?.length) return layers.includes("l2_projection");
+  return true;
+}
+
+/** Config declares L3 forecast for this KPI. */
+export function hasL3ProjectionLayer(kpi: NavigatorKPI): boolean {
+  if (!hasL3ForecastData(kpi)) return false;
+  const layers = kpi.forecast_layers;
+  if (layers?.length) return layers.includes("l3");
+  return true;
 }
 
 /** True when the chart should draw the L2 projection line on 7D/30D (alongside L3). */
@@ -260,10 +276,8 @@ export function showsL2ProjectionOnChart(
   kpi: NavigatorKPI,
   period: "now" | "7d" | "30d",
 ): boolean {
-  if (period === "now" || !kpi.l2_projection) return false;
-  const layers = kpi.forecast_layers;
-  if (layers?.length) return layers.includes("l2_projection");
-  return true;
+  if (period === "now") return false;
+  return hasL2ProjectionLayer(kpi) && isTemporalKpi(kpi);
 }
 
 const NON_TEMPORAL_CHART_TYPES = new Set([
@@ -280,7 +294,7 @@ export function kpiSupportsPeriod(kpi: NavigatorKPI): boolean {
   if (nameN.includes("snapshot") || nameN.includes("heatmap")) return false;
   if (isTemporalKpi(kpi)) return true;
   if (hasL3ForecastData(kpi)) return true;
-  if (usesL2ForwardProjection(kpi)) return true;
+  if (hasL2ProjectionLayer(kpi)) return true;
   return false;
 }
 
@@ -309,14 +323,6 @@ export function resolveL3BreakdownAggregate(kpi: NavigatorKPI): "sum" | "avg" | 
   return "sum";
 }
 
-function l2ProjectionSane(live: number, projected: number, period: "7d" | "30d"): boolean {
-  if (!Number.isFinite(projected) || !Number.isFinite(live)) return false;
-  if (Math.abs(live) < 0.01) return Math.abs(projected) < 1000;
-  const ratio = Math.abs(projected) / Math.abs(live);
-  const maxRatio = period === "7d" ? 5 : 12;
-  return ratio <= maxRatio && ratio >= 1 / maxRatio;
-}
-
 /** Unified headline for Now / 7D / 30D — matches chart window or L3 forecast. */
 export function resolvePeriodHeadline(
   kpi: NavigatorKPI,
@@ -339,30 +345,27 @@ export function resolvePeriodHeadline(
     return { value: v ?? configL1 ?? null, layer };
   }
 
-  const l3 = resolveL3Value(kpi, effectivePeriod);
-  if (l3 !== null && hasL3ForecastData(kpi)) {
-    if (configL1 === null || configL1 === undefined || l1MatchesConfig(l3, configL1)) {
+  const horizon = effectivePeriod === "7d" ? 7 : 30;
+
+  // L3 headline — pipeline-saved forecast; do not gate on l1MatchesConfig (different horizon/scale).
+  if (hasL3ProjectionLayer(kpi)) {
+    const l3 = resolveL3Value(kpi, effectivePeriod);
+    if (l3 !== null && Number.isFinite(l3)) {
       return { value: l3, layer: "L3" };
+    }
+  }
+
+  // L2 headline — any l2_projection method on temporal KPIs (ratio, daily_rate, growth_rate).
+  if (showsL2ProjectionOnChart(kpi, effectivePeriod) && kpi.l2_projection) {
+    const projected = computeL2ProjectionValue(kpi, rows, horizon);
+    if (projected !== null && Number.isFinite(projected)) {
+      return { value: projected, layer: "L2" };
     }
   }
 
   const temporal = isTemporalKpi(kpi);
   const windowed = temporal ? filterRowsForPeriod(rows, kpi, effectivePeriod) : rows;
   const windowL1 = computeL1Value(kpi, windowed);
-
-  if (temporal && usesL2ForwardProjection(kpi) && kpi.l2_projection) {
-    const horizon = effectivePeriod === "7d" ? 7 : 30;
-    const projected = computeL2ProjectionValue(kpi, rows, horizon);
-    const baseline = computeL1Value(kpi, rows) ?? configL1 ?? null;
-    if (
-      projected !== null
-      && baseline !== null
-      && l2ProjectionSane(baseline, projected, effectivePeriod === "7d" ? "7d" : "30d")
-    ) {
-      return { value: projected, layer: "L2" };
-    }
-  }
-
   return { value: windowL1 ?? configL1 ?? null, layer: "L1" };
 }
 

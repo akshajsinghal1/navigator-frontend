@@ -35,7 +35,7 @@ def _is_temporal(kpi: KPI, rows: list[dict] | None) -> bool:
         "line_chart", "area_chart", "stacked_area_chart", "stacked_bar_chart",
     ):
         return True
-    if rows and kpi.chart.x_axis:
+    if rows and kpi.chart.x_axis_type == "temporal" and kpi.chart.x_axis:
         from pipeline.metric_contract import find_date_column
         return bool(find_date_column(rows, kpi.chart.x_axis))
     return False

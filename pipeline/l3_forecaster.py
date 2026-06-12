@@ -70,7 +70,10 @@ def _load_model():
 def _date_hint(kpi) -> str | None:
     if kpi.l2_projection and kpi.l2_projection.date_field:
         return kpi.l2_projection.date_field
-    if kpi.chart.x_axis:
+    # Only use x_axis as a date hint when the chart is explicitly temporal;
+    # categorical fields (Region, Category) would be found by find_date_column's
+    # hint-existence check and returned as a fake date column.
+    if kpi.chart.x_axis_type == "temporal" and kpi.chart.x_axis:
         return kpi.chart.x_axis
     return None
 
