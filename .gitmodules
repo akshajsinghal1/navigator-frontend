@@ -1,0 +1,3 @@
+[submodule "nav-rbac"]
+	path = nav-rbac
+	url = https://akshajsinghal@bitbucket.org/zclapresearch/nav-rbac.git
